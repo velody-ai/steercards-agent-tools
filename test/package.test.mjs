@@ -20,9 +20,11 @@ function run(command, args, options = {}) {
   if (process.platform === 'win32' && command.endsWith('.cmd')) {
     args = ['/d', '/s', '/c', `"${[command, ...args].map(value => `"${value}"`).join(' ')}"`];
     command = process.env.ComSpec ?? 'cmd.exe';
+    options = { ...options, windowsVerbatimArguments: true };
   }
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, { cwd: root, env, windowsHide: true, timeout: 30000, ...options });
+    child.stdin.end();
     let stdout = '', stderr = '';
     child.stdout.setEncoding('utf8').on('data', chunk => { stdout += chunk; });
     child.stderr.setEncoding('utf8').on('data', chunk => { stderr += chunk; });
