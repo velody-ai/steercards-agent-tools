@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { createServer as createHttpServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { once } from 'node:events';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -15,6 +15,7 @@ import { Runtime } from '../src/runtime.js';
 import { createServer, getGuide } from '../src/server.js';
 
 const key = 'test-agent-key-DO-NOT-LOG';
+const { name: packageName, version: packageVersion } = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
 const schema: Tool = {
   name: 'read_card', title: 'Read a card', description: 'Read a card and its description.',
   inputSchema: { type: 'object', properties: { id: { type: 'integer' } }, required: ['id'], additionalProperties: false, 'x-custom-key': 'passthrough' },
@@ -35,7 +36,7 @@ const success: CallToolResult = {
 };
 const failure: CallToolResult = { content: [{ type: 'text', text: 'Card not found' }], structuredContent: { ok: false, error: { code: 'CARD_NOT_FOUND', status: 404 } }, isError: true };
 
-interface Rpc { jsonrpc: '2.0'; id?: string | number; method: string; params?: { cursor?: string; name?: string; arguments?: Record<string, unknown>; protocolVersion?: string } }
+interface Rpc { jsonrpc: '2.0'; id?: string | number; method: string; params?: { cursor?: string; name?: string; arguments?: Record<string, unknown>; protocolVersion?: string; clientInfo?: { name: string; version: string } } }
 
 async function fixture(t: TestContext, handler?: (rpc: Rpc, res: ServerResponse) => boolean) {
   const calls: Rpc[] = [];
@@ -56,6 +57,7 @@ async function fixture(t: TestContext, handler?: (rpc: Rpc, res: ServerResponse)
     switch (rpc.method) {
       case 'initialize':
         assert.equal(rpc.params?.protocolVersion, '2025-11-25');
+        assert.deepEqual(rpc.params?.clientInfo, { name: packageName, version: packageVersion });
         result = { protocolVersion: '2025-11-25', capabilities: { tools: {} }, serverInfo: { name: 'stateless-test', version: '1' } }; break;
       case 'tools/list':
         result = rpc.params?.cursor === 'page-two' ? { tools: tools.slice(1) } : { tools: tools.slice(0, 1), nextCursor: 'page-two' }; break;
@@ -238,6 +240,7 @@ test('compact and full local MCP modes expose their contract and preserve upstre
       await server.connect(serverTransport);
       await client.connect(clientTransport);
       t.after(async () => { await client.close(); await server.close(); });
+      assert.deepEqual(client.getServerVersion(), { name: packageName, version: packageVersion });
       const list = await client.request({ method: 'tools/list' }, ListToolsResultSchema);
       if (mode === 'compact') {
         assert.deepEqual(list.tools.map(tool => tool.name), ['steercards_search_tools', 'steercards_describe_tool', 'steercards_call_tool', 'steercards_get_guide']);
@@ -275,6 +278,7 @@ test('real stdio transport keeps stdout as MCP frames and closes upstream on EOF
   transport.stderr?.on('data', chunk => { stderr += chunk; });
   t.after(() => client.close());
   await client.connect(transport);
+  assert.deepEqual(client.getServerVersion(), { name: packageName, version: packageVersion });
   const list = await client.listTools();
   assert.equal(list.tools.length, 4);
   const result = await client.callTool({ name: 'steercards_call_tool', arguments: { name: 'read_card', arguments: { id: 17 } } });

@@ -5,6 +5,7 @@ import {
   type CallToolResult, type Tool,
 } from '@modelcontextprotocol/sdk/types.js';
 import { validateMcpUrl, type Config } from './config.js';
+import { packageInfo } from './package.js';
 
 export type ToolSummary = Pick<Tool, 'name' | 'title' | 'annotations'> & { description?: string };
 
@@ -60,7 +61,7 @@ export class Runtime {
     if (this.client) return this.client;
     if (!this.connecting) {
       this.connecting = (async () => {
-        const client = new Client({ name: '@steercards/agent-tools', version: '0.1.0' });
+        const client = new Client({ name: packageInfo.name, version: packageInfo.version });
         client.setNotificationHandler(ToolListChangedNotificationSchema, async () => { this.catalog = undefined; });
         const endpoint = this.config.url;
         const transport = new StreamableHTTPClientTransport(new URL(endpoint), {
