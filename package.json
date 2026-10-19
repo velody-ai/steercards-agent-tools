@@ -1,6 +1,6 @@
 {
   "name": "@steercards/agent-tools",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Progressive MCP discovery, CLI and agent skills for Steercards",
   "type": "module",
   "license": "MIT",
@@ -28,6 +28,7 @@
   "scripts": {
     "build": "tsc",
     "test": "node --import tsx --test test/*.test.ts",
+    "test:package": "npm run build && node --test test/package.test.mjs",
     "check": "tsc --noEmit",
     "prepack": "npm run build"
   },
