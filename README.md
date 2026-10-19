@@ -7,11 +7,11 @@ Steercards의 전체 MCP 도구를 CLI와 에이전트에서 사용할 수 있�
 - `full` 모드는 원격 도구를 각각 노출합니다.
 - 프로젝트 `.env`를 읽는 STDIO MCP 서버, 단독 CLI, 설치 가능한 Skill을 함께 제공합니다.
 
-패키지 이름은 `@steercards/agent-tools`, 실행 명령은 `steercards`입니다. 아래 npm 명령은 **0.1.0을 게시한 뒤** 사용할 수 있습니다. 게시 전에는 소스에서 빌드하는 방법을 사용하세요.
+패키지 이름은 `@steercards/agent-tools`, 실행 명령은 `steercards`입니다. npm에서 설치하거나 소스에서 빌드해 사용할 수 있습니다.
 
-## 게시 전: 소스에서 설치
+## 소스에서 설치
 
-아직 npm에 게시하지 않았으므로 받은 소스 디렉터리에서 빌드한 뒤 `setup --local`을 실행합니다.
+소스 디렉터리에서 빌드한 뒤 `setup --local`을 실행합니다.
 
 ```sh
 npm ci
@@ -37,9 +37,9 @@ node /absolute/path/agent-tools/dist/cli.js doctor --cwd /absolute/path/project 
 
 `doctor`는 키 값을 출력하지 않습니다. `--connect`를 추가하면 원격 서버에 연결하고 워크스페이스 목록을 조회하는 읽기 전용 검사를 수행합니다. 생략하면 로컬 설정만 확인합니다.
 
-## npm 게시 후: 설치와 업데이트
+## npm 설치와 업데이트
 
-게시 후 처음 설치할 때와 새 버전으로 업데이트할 때 같은 명령을 사용합니다.
+처음 설치할 때와 새 버전으로 업데이트할 때 같은 명령을 사용합니다.
 
 ```sh
 npx -y @steercards/agent-tools@latest setup --client codex-app --cwd /absolute/path/project
@@ -47,7 +47,7 @@ npx -y @steercards/agent-tools@latest setup --client codex-app --cwd /absolute/p
 
 실행한 패키지 버전의 MCP 설정과 Skill을 함께 적용합니다. npx 기반 MCP 실행 명령은 해당 버전에 고정되므로 Skill과 같은 버전을 사용합니다. 같은 버전·옵션으로 다시 실행하면 변경 없이 성공합니다. 기존 설치에서는 생략한 실행 옵션(`--local`, `--mode`, `--url`, `--env-file`)을 설치 기록에서 유지합니다. `--local` 설치는 새 소스를 받은 뒤 `npm ci`, `npm run build`를 실행하고 같은 `setup --local` 명령을 다시 실행하세요.
 
-게시 전의 `--local` 설치를 게시 후 npm 실행 방식으로 전환할 때는 `--npx`를 지정합니다. 이후 MCP 설정은 실행한 패키지 버전의 npx 명령을 사용합니다.
+소스의 `--local` 설치를 npm 실행 방식으로 전환할 때는 `--npx`를 지정합니다. 이후 MCP 설정은 실행한 패키지 버전의 npx 명령을 사용합니다.
 
 ```sh
 npx -y @steercards/agent-tools@latest setup --client codex-app --cwd /absolute/path/project --npx
@@ -96,7 +96,7 @@ TTY에서 `--client`를 생략하면 사용할 클라이언트를 선택합니�
 
 Claude Desktop 자동 설치는 macOS와 Windows를 지원합니다. MCP 설정은 macOS의 `~/Library/Application Support/Claude/claude_desktop_config.json`, Windows의 `%APPDATA%\Claude\claude_desktop_config.json`에 병합합니다. Desktop은 사용자 설정이므로 선택한 프로젝트의 `--cwd`가 연결 대상이 됩니다. 생성한 ZIP은 앱의 Skill 업로드 UI에서 직접 추가해야 하며 업데이트 후에는 새 ZIP을 다시 업로드합니다. 계정·앱의 업로드 지원 여부는 [Claude 공식 Skill 안내](https://support.claude.com/en/articles/12512180-use-skills-in-claude)를 확인하세요.
 
-게시 전에는 `--local`을 사용하세요. 실제 Node 실행 파일과 `dist/cli.js`의 절대 경로를 MCP 설정에 넣으므로 해당 설치 디렉터리를 유지해야 합니다. Windows GUI에서도 실행 경로를 확실히 고정하는 이 방식을 권장합니다. `--local`을 생략한 설정은 `npx`를 사용하므로 클라이언트에서 `npx`를 실행할 수 있어야 합니다.
+소스에서 빌드한 경우 `--local`을 사용하세요. 실제 Node 실행 파일과 `dist/cli.js`의 절대 경로를 MCP 설정에 넣으므로 해당 설치 디렉터리를 유지해야 합니다. Windows GUI에서도 실행 경로를 확실히 고정하는 이 방식을 권장합니다. `--local`을 생략한 설정은 `npx`를 사용하므로 클라이언트에서 `npx`를 실행할 수 있어야 합니다.
 
 지원 옵션:
 

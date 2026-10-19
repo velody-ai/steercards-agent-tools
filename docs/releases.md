@@ -18,7 +18,7 @@
    | Allowed actions | `npm publish` 허용 |
 
    신규 설정은 staged publish만 기본 허용할 수 있으므로 직접 게시 권한을 명시적으로 켭니다. 워크플로는 장기 npm 토큰 없이 GitHub OIDC로 인증합니다. `NPM_TOKEN`·`NODE_AUTH_TOKEN` secret은 추가하지 않습니다.
-4. placeholder로 시작했다면 npm staged packages 화면이나 `npm stage` 명령으로 준비한 `0.1.0`을 reject하고, 아래 절차로 같은 버전의 GitHub Release를 게시합니다. staged 버전을 먼저 approve하면 같은 버전을 Actions에서 다시 게시할 수 없습니다. 새 trusted publisher는 등록 후 2일 안에 첫 게시를 성공해야 검증되므로 실제 게시를 바로 이어갈 때 등록합니다. 토큰 게시를 제한하려면 OIDC 확인 후 npm 패키지의 Publishing access를 **Require two-factor authentication and disallow tokens**로 설정합니다.
+4. placeholder로 시작했다면 npm staged packages 화면이나 `npm stage` 명령으로 준비한 `0.1.0`을 reject합니다. staged 버전 제거와 `npm view @steercards/agent-tools@0.1.0`의 미게시 상태를 확인한 뒤 아래 GitHub Release 절차를 진행합니다. 같은 버전의 staged → reject → OIDC 직접 게시 전환은 최초 설정에서 실제 레지스트리 상태로 확인해야 합니다. staged 버전을 먼저 approve하면 같은 버전을 Actions에서 다시 게시할 수 없습니다. 새 trusted publisher는 등록 후 2일 안에 첫 게시를 성공해야 검증되므로 실제 게시를 바로 이어갈 때 등록합니다. 토큰 게시를 제한하려면 OIDC 확인 후 npm 패키지의 Publishing access를 **Require two-factor authentication and disallow tokens**로 설정합니다.
 
 ## 새 버전 게시
 
