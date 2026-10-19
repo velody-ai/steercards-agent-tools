@@ -5,6 +5,8 @@ import { tmpdir } from 'node:os';
 import { delimiter, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
+import { createServer } from 'node:http';
+import { once } from 'node:events';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 
@@ -15,16 +17,17 @@ const env = { ...process.env, PATH: `${dirname(process.execPath)}${delimiter}${p
 for (const name of ['STEERCARDS_AGENT_KEY', 'STEERCARDS_MCP_URL', 'NODE_OPTIONS', 'NODE_PATH']) delete env[name];
 
 function run(command, args, options = {}) {
+  const { input, ...spawnOptions } = options;
   // Node cannot spawn npm's Windows .cmd shims directly. Exercise the actual
   // shim through cmd.exe; the fixture arguments contain no shell metacharacters.
   if (process.platform === 'win32' && command.endsWith('.cmd')) {
     args = ['/d', '/s', '/c', `"${[command, ...args].map(value => `"${value}"`).join(' ')}"`];
     command = process.env.ComSpec ?? 'cmd.exe';
-    options = { ...options, windowsVerbatimArguments: true };
+    spawnOptions.windowsVerbatimArguments = true;
   }
   return new Promise((resolve, reject) => {
-    const child = spawn(command, args, { cwd: root, env, windowsHide: true, timeout: 30000, ...options });
-    child.stdin.end();
+    const child = spawn(command, args, { cwd: root, env, windowsHide: true, timeout: 30000, ...spawnOptions });
+    child.stdin.end(input);
     let stdout = '', stderr = '';
     child.stdout.setEncoding('utf8').on('data', chunk => { stdout += chunk; });
     child.stderr.setEncoding('utf8').on('data', chunk => { stderr += chunk; });
@@ -143,6 +146,67 @@ test('packed npm launchers preserve project env-file semantics', { timeout: 2400
     const report = json(await run('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', bin.replace(/\.cmd$/, '.ps1'), ...doctor, '--env-file', 'alternate.env'], { cwd: consumer }));
     assert.equal(report.envFile, join(project, 'alternate.env'));
     assert.equal(report.keySource, 'env-file');
+  });
+
+  await t.test('one-use setup through packed bin and PowerShell npx keeps secrets off output', async () => {
+    const code = `sc_install_${'C'.repeat(43)}`;
+    const token = `sc_agent_${'T'.repeat(43)}`;
+    let exchanges = 0, calls = 0;
+    const server = createServer(async (req, res) => {
+      let body = '';
+      for await (const chunk of req) body += chunk;
+      res.setHeader('Content-Type', 'application/json');
+      if (req.url === '/api/agent-setup/exchange') {
+        assert.equal(JSON.parse(body).code, code); exchanges++;
+        res.end(JSON.stringify({ token, key: { id: 'd64b013e-9338-45e0-b95b-eb162df86e58' }, installationId: 'cda81bb1-80c4-43bf-99ec-362f2f3b9d97', profileIds: [] })); return;
+      }
+      assert.equal(req.headers.authorization, `Bearer ${token}`);
+      if (req.method !== 'POST') { res.writeHead(405); res.end(); return; }
+      const rpc = JSON.parse(body);
+      if (rpc.id === undefined) { res.writeHead(202); res.end(); return; }
+      let result;
+      if (rpc.method === 'initialize') result = { protocolVersion: '2025-11-25', capabilities: { tools: {} }, serverInfo: { name: 'fixture', version: '1' } };
+      else if (rpc.method === 'tools/list') result = { tools: [{ name: 'list_workspaces', inputSchema: { type: 'object' } }] };
+      else { calls++; result = { content: [{ type: 'text', text: '{"ok":true}' }], structuredContent: { ok: true } }; }
+      res.end(JSON.stringify({ jsonrpc: '2.0', id: rpc.id, result }));
+    });
+    server.listen(0, '127.0.0.1'); await once(server, 'listening');
+    const url = `http://127.0.0.1:${server.address().port}/api/mcp`;
+    try {
+      const newProject = join(temp, 'one prompt project');
+      await mkdir(newProject);
+      const args = ['setup', '--client', 'cursor', '--cwd', '.', '--env-file', '.env', '--url', url, '--setup-code-stdin'];
+      const preview = json(await run(bin, [...args, '--dry-run'], { cwd: newProject, input: code + '\r\n' }));
+      assert.equal(preview.credentials.status, 'dry-run');
+      assert.equal(exchanges, 0);
+      await assert.rejects(readFile(join(newProject, '.env')), { code: 'ENOENT' });
+      const invalid = await run(bin, args, { cwd: newProject, input: code + 'x'.repeat(1100) });
+      assert.equal(invalid.status, 1);
+      assert.ok(!invalid.stderr.includes(code));
+      assert.equal(exchanges, 0);
+      const first = await run(bin, args, { cwd: newProject, input: code + '\r\n', env: { ...env, STEERCARDS_AGENT_KEY: 'wrong-inherited-key' } });
+      const report = json(first);
+      assert.equal(report.ok, true, report.error);
+      assert.equal(report.credentials.status, 'saved');
+      assert.equal(report.doctor.keySource, 'env-file');
+      assert.ok(!first.stdout.includes(token) && !first.stderr.includes(token));
+      assert.ok(!first.stdout.includes(code) && !first.stderr.includes(code));
+      assert.equal(await readFile(join(newProject, '.env'), 'utf8'), `STEERCARDS_AGENT_KEY=${token}\n`);
+      assert.equal(json(await run(bin, args, { cwd: newProject, input: code + '\n' })).credentials.status, 'kept');
+      assert.equal(exchanges, 1);
+      if (process.platform === 'win32') {
+        const psProject = join(consumer, 'powershell bootstrap');
+        await mkdir(psProject);
+        const quote = value => `'${value.replace(/'/g, "''")}'`;
+        const npx = join(dirname(process.execPath), 'npx.ps1');
+        const command = `@'\r\n${code}\r\n'@ | & ${quote(npx)} ${['--offline', '--', 'steercards', ...args].map(quote).join(' ')}`;
+        const result = await run('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', command], { cwd: psProject });
+        assert.equal(json(result).ok, true, result.stderr);
+        assert.ok(!result.stdout.includes(token));
+        assert.equal(exchanges, 2);
+      }
+      assert.ok(calls >= 2);
+    } finally { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
   });
 
   assert.equal(await readFile(join(project, '.env'), 'utf8'), defaultFile);
