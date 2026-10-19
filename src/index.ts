@@ -4,3 +4,5 @@ export { createServer, startServer } from './server.js';
 export type { Config, ConfigOptions } from './config.js';
 export type { ToolSummary } from './runtime.js';
 export { getGuide } from './server.js';
+export { setup } from './setup.js';
+export type { SetupOptions, SetupReport } from './setup.js';

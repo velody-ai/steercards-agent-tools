@@ -2,13 +2,16 @@
 import { parseArgs } from 'node:util';
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
+import { createInterface } from 'node:readline/promises';
 import { loadConfig } from './config.js';
 import { Runtime } from './runtime.js';
 import { startServer } from './server.js';
 import { clientConfig, installSkill, exportSkill, packageInfo } from './install.js';
+import { setup } from './setup.js';
 
 const help = `Steercards agent tools ${packageInfo.version}
 
+steercards setup [--client CLIENT] [--local | --npx] [--dry-run]
 steercards serve [--mode compact|full]
 steercards tools [query] [--limit 10]
 steercards describe NAME
@@ -22,7 +25,11 @@ Connection options: --cwd PATH --env-file PATH --url URL
 Default .env: exactly --cwd/.env (otherwise current directory).
 Environment: STEERCARDS_AGENT_KEY, optional STEERCARDS_MCP_URL.
 Clients: claude-code, codex, codex-app, codex-cli, cursor, claude-desktop.
-config prints a snippet; it never edits host settings or includes the key.
+setup installs MCP configuration and the skill together; rerun to update both.
+setup uses project scope (Desktop uses its user configuration and a project ZIP).
+--npx explicitly switches an existing local setup to a pinned npm package.
+--dry-run previews setup without writing files. No key is needed for setup.
+config only prints a snippet and never edits host settings.
 --local uses this installation's absolute Node/CLI paths (works before npm release).
 Claude Desktop: upload the skill ZIP, use compact get_guide, or full guide resources.
 Full tool responses are JSON; tool/product errors exit nonzero. Writes are never retried.
@@ -57,6 +64,7 @@ async function main() {
     json: { type: 'string' }, file: { type: 'string' }, stdin: { type: 'boolean' },
     client: { type: 'string' }, global: { type: 'boolean' }, output: { type: 'string' },
     limit: { type: 'string' }, connect: { type: 'boolean' }, local: { type: 'boolean' },
+    'dry-run': { type: 'boolean' }, npx: { type: 'boolean' },
     help: { type: 'boolean', short: 'h' }, version: { type: 'boolean', short: 'v' },
   } });
   if (values.version) { process.stdout.write(packageInfo.version + '\n'); return; }
@@ -64,6 +72,29 @@ async function main() {
   const [command, name, ...extra] = positionals;
   const options = { cwd: values.cwd, envFile: values['env-file'], url: values.url };
   if (extra.length) throw new Error('Unexpected extra arguments. Use --help.');
+  if (command === 'setup') {
+    if (name) throw new Error('Use setup --client CLIENT.');
+    for (const option of ['json', 'file', 'stdin', 'limit', 'output', 'connect'] as const) {
+      if (values[option] !== undefined) throw new Error(`--${option} is not supported by setup.`);
+    }
+    if (values.global) throw new Error('setup uses project scope; omit --global. Claude Desktop configuration is user-scoped.');
+    if (values.local && values.npx) throw new Error('Choose only one of --local or --npx.');
+    let client = values.client;
+    if (!client) {
+      if (!process.stdin.isTTY || !process.stderr.isTTY) throw new Error('Noninteractive setup requires --client: codex, claude-code, cursor, or claude-desktop.');
+      const choices = ['codex', 'claude-code', 'cursor', 'claude-desktop'];
+      const prompt = createInterface({ input: process.stdin, output: process.stderr });
+      try {
+        process.stderr.write('Choose a client:\n1. Codex app / CLI\n2. Claude Code\n3. Cursor\n4. Claude Desktop\n');
+        const answer = (await prompt.question('Client [1-4 or name]: ')).trim();
+        client = /^[1-4]$/.test(answer) ? choices[Number(answer) - 1] : answer;
+      } finally { prompt.close(); }
+      if (!client) throw new Error('No client selected. Nothing was installed.');
+    }
+    output(await setup({ ...options, client, local: values.npx ? false : values.local, mode: values.mode, dryRun: values['dry-run'] }));
+    return;
+  }
+  if (values['dry-run'] || values.npx) throw new Error('--dry-run and --npx are only supported by setup.');
   if (command === 'config') {
     if (!name) throw new Error('Choose a client. Use --help.');
     process.stdout.write(clientConfig(name, { ...options, local: values.local, mode: values.mode })); return;

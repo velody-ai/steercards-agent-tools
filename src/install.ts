@@ -3,6 +3,7 @@ import { dirname, join, resolve } from 'node:path';
 import { homedir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { zipSync } from 'fflate';
+import { validateMcpUrl } from './config.js';
 
 export const packageRoot = fileURLToPath(new URL('../', import.meta.url));
 export const skillRoot = join(packageRoot, 'skills', 'steercards');
@@ -19,9 +20,7 @@ export function clientConfig(client: string, options: { cwd?: string; local?: bo
   args.push('serve', '--cwd', cwd, '--mode', mode);
   if (options.envFile) args.push('--env-file', resolve(cwd, options.envFile));
   if (options.url) {
-    const url = new URL(options.url);
-    if (url.username || url.password || url.search || url.hash) throw new Error('URL must not contain credentials, query parameters, or a fragment.');
-    args.push('--url', options.url);
+    args.push('--url', validateMcpUrl(options.url));
   }
   const command = options.local ? process.execPath : 'npx';
   if (client.startsWith('codex')) return `[mcp_servers.steercards]\ncommand = ${JSON.stringify(command)}\nargs = ${JSON.stringify(args)}\n`;

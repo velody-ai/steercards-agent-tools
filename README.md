@@ -9,17 +9,17 @@ Steercards의 전체 MCP 도구를 CLI와 에이전트에서 사용할 수 있�
 
 패키지 이름은 `@steercards/agent-tools`, 실행 명령은 `steercards`입니다. 아래 npm 명령은 **0.1.0을 게시한 뒤** 사용할 수 있습니다. 게시 전에는 소스에서 빌드하는 방법을 사용하세요.
 
-## 게시 전: 소스에서 실행
+## 게시 전: 소스에서 설치
 
-이 저장소를 받은 디렉터리에서 실행합니다.
+아직 npm에 게시하지 않았으므로 받은 소스 디렉터리에서 빌드한 뒤 `setup --local`을 실행합니다.
 
 ```sh
 npm ci
 npm run build
-node dist/cli.js --help
+node /absolute/path/agent-tools/dist/cli.js setup --client codex-app --cwd /absolute/path/project --local
 ```
 
-사용할 프로젝트에 `.env.example`을 참고하여 `.env`를 만듭니다. 실제 키를 Git에 커밋하지 않도록 프로젝트의 `.gitignore`에 `.env`를 추가하세요.
+`setup` 한 번으로 Steercards MCP 설정과 Skill을 함께 설치합니다. 키 없이 설치할 수 있으며 `.env`를 만들거나 덮어쓰지 않습니다. 설치 뒤 프로젝트에 `.env.example`을 참고한 `.env`를 만들고 실제 Agent Key를 입력하세요.
 
 ```dotenv
 STEERCARDS_AGENT_KEY=your-agent-key
@@ -27,26 +27,37 @@ STEERCARDS_AGENT_KEY=your-agent-key
 STEERCARDS_MCP_URL=https://steercards.com/api/mcp
 ```
 
+프로젝트 `.gitignore`에 `.env`와 `.steercards/`를 추가하세요. `.steercards/`에는 프로젝트별 설치 기록과 Desktop용 Skill ZIP이 들어갑니다. 설치 기록은 다음 업데이트에 필요한 로컬 소유권 정보이므로 보존하세요. 절대 경로를 포함하므로 다른 프로젝트·컴퓨터로 복사하거나 프로젝트 이동 후 그대로 재사용할 수 없습니다.
+
+클라이언트에서 필요한 MCP 승인과 재시작·다시 연결을 마친 뒤 확인합니다.
+
 ```sh
-node /absolute/path/agent-tools/dist/cli.js doctor --cwd /absolute/path/project
 node /absolute/path/agent-tools/dist/cli.js doctor --cwd /absolute/path/project --connect
-node /absolute/path/agent-tools/dist/cli.js tools --cwd /absolute/path/project
 ```
 
-`doctor`는 키 값을 출력하지 않고 탐지 여부와 로컬 설정을 확인합니다. `--connect`를 추가하면 원격 서버에 연결하고 워크스페이스 목록을 조회하는 읽기 전용 검사를 수행합니다.
+`doctor`는 키 값을 출력하지 않습니다. `--connect`를 추가하면 원격 서버에 연결하고 워크스페이스 목록을 조회하는 읽기 전용 검사를 수행합니다. 생략하면 로컬 설정만 확인합니다.
 
-## npm 게시 후: 빠른 시작
+## npm 게시 후: 설치와 업데이트
+
+게시 후 처음 설치할 때와 새 버전으로 업데이트할 때 같은 명령을 사용합니다.
 
 ```sh
-npx -y @steercards/agent-tools@0.1.0 doctor --cwd /absolute/path/project --connect
-npx -y @steercards/agent-tools@0.1.0 tools cards --cwd /absolute/path/project
+npx -y @steercards/agent-tools@latest setup --client codex-app --cwd /absolute/path/project
 ```
 
-전역 설치도 가능합니다.
+실행한 패키지 버전의 MCP 설정과 Skill을 함께 적용합니다. npx 기반 MCP 실행 명령은 해당 버전에 고정되므로 Skill과 같은 버전을 사용합니다. 같은 버전·옵션으로 다시 실행하면 변경 없이 성공합니다. 기존 설치에서는 생략한 실행 옵션(`--local`, `--mode`, `--url`, `--env-file`)을 설치 기록에서 유지합니다. `--local` 설치는 새 소스를 받은 뒤 `npm ci`, `npm run build`를 실행하고 같은 `setup --local` 명령을 다시 실행하세요.
+
+게시 전의 `--local` 설치를 게시 후 npm 실행 방식으로 전환할 때는 `--npx`를 지정합니다. 이후 MCP 설정은 실행한 패키지 버전의 npx 명령을 사용합니다.
 
 ```sh
-npm install --global @steercards/agent-tools@0.1.0
-steercards --help
+npx -y @steercards/agent-tools@latest setup --client codex-app --cwd /absolute/path/project --npx
+```
+
+전역 설치를 선택했다면 패키지를 업데이트한 뒤 `setup`을 다시 실행합니다.
+
+```sh
+npm install --global @steercards/agent-tools@latest
+steercards setup --client codex-app --cwd /absolute/path/project
 ```
 
 이하 `steercards` 명령은 전역 설치를 기준으로 합니다. 소스 빌드 사용자는 `node /absolute/path/agent-tools/dist/cli.js`로 대체하면 됩니다.
@@ -65,34 +76,41 @@ steercards --help
 
 GUI 앱은 터미널과 다른 디렉터리·환경에서 시작될 수 있습니다. 설정을 생성할 때 `--cwd`에 실제 프로젝트의 절대 경로를 지정하세요. 여러 프로젝트를 사용하면 서버 이름과 `--cwd`를 프로젝트별로 구분하세요. 키는 MCP 설정에 복사하지 않고 해당 프로젝트의 `.env`에 둡니다.
 
-## MCP 클라이언트 연결
-
-`config`는 **설정 조각을 출력**합니다. 기존 클라이언트 설정 파일을 수정하지 않습니다. 출력 내용을 기존 설정에 병합한 뒤 클라이언트를 다시 시작하거나 MCP 서버를 다시 연결하세요.
-
-게시 전 또는 GUI 실행 경로를 확실히 고정하려면 빌드한 소스에서 `--local`로 생성합니다. 실제 사용 중인 Node 실행 파일과 패키지의 `dist/cli.js` 절대 경로를 출력하므로 해당 설치 디렉터리를 유지해야 합니다. Windows에서도 이 방식을 권장합니다.
+## 클라이언트 설치·업데이트
 
 ```sh
-node /absolute/path/agent-tools/dist/cli.js config codex-app --cwd /absolute/path/project --local
-node /absolute/path/agent-tools/dist/cli.js config claude-code --cwd /absolute/path/project --local
-node /absolute/path/agent-tools/dist/cli.js config cursor --cwd /absolute/path/project --local
-node /absolute/path/agent-tools/dist/cli.js config claude-desktop --cwd /absolute/path/project --local
+steercards setup --client codex-app --cwd /absolute/path/project
+steercards setup --client claude-code --cwd /absolute/path/project
+steercards setup --client cursor --cwd /absolute/path/project
+steercards setup --client claude-desktop --cwd /absolute/path/project
 ```
 
-게시 후에는 `--local`을 생략해 `npx -y @steercards/agent-tools@0.1.0` 기반 설정을 생성할 수 있습니다. 이 경우 클라이언트에서 `npx`를 실행할 수 있어야 합니다.
+TTY에서 `--client`를 생략하면 사용할 클라이언트를 선택합니다. CI·스크립트 등 대화형 입력을 사용할 수 없는 환경에서는 `--client`를 지정해야 합니다. `codex`, `codex-app`, `codex-cli`는 같은 Codex 설치 위치를 사용합니다.
 
-```sh
-steercards config codex --cwd /absolute/path/project
-steercards config claude-code --cwd /absolute/path/project
-steercards config cursor --cwd /absolute/path/project
-steercards config claude-desktop --cwd /absolute/path/project
-```
-
-| 클라이언트 | `config` 이름 | 출력할 설정의 위치·참고 자료 |
+| 클라이언트 | `--client` | MCP 설정과 Skill 설치 위치 |
 | --- | --- | --- |
-| Codex 앱·CLI | `codex`, `codex-app`, `codex-cli` | `~/.codex/config.toml` 또는 신뢰한 프로젝트의 `.codex/config.toml`. 같은 호스트의 MCP 설정을 공유합니다. [공식 MCP 설정](https://developers.openai.com/codex/mcp) |
-| Claude Code | `claude-code` | 프로젝트 `.mcp.json`. [공식 MCP 설정](https://code.claude.com/docs/en/mcp) |
-| Cursor | `cursor` | 프로젝트 `.cursor/mcp.json` 또는 `~/.cursor/mcp.json`. [공식 MCP 설정](https://cursor.com/docs/mcp) |
-| Claude Desktop | `claude-desktop` | macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`, Windows: `%APPDATA%\Claude\claude_desktop_config.json`. [로컬 MCP 연결 안내](https://modelcontextprotocol.io/docs/develop/connect-local-servers) |
+| Codex 앱·CLI | `codex`, `codex-app`, `codex-cli` | 프로젝트 `.codex/config.toml`과 `.agents/skills/steercards/`. 프로젝트 설정은 신뢰한 프로젝트에서 사용합니다. [공식 MCP 설정](https://developers.openai.com/codex/mcp), [Skills](https://developers.openai.com/codex/skills) |
+| Claude Code | `claude-code` | 프로젝트 `.mcp.json`과 `.claude/skills/steercards/`. [공식 MCP 설정](https://code.claude.com/docs/en/mcp), [Skills](https://code.claude.com/docs/en/skills) |
+| Cursor | `cursor` | 프로젝트 `.cursor/mcp.json`과 `.cursor/skills/steercards/`. [공식 MCP 설정](https://cursor.com/docs/mcp), [Skills](https://cursor.com/docs/skills) |
+| Claude Desktop | `claude-desktop` | 아래 OS별 사용자 MCP 설정과 프로젝트 `.steercards/steercards-skill.zip`. [로컬 MCP 연결 안내](https://modelcontextprotocol.io/docs/develop/connect-local-servers) |
+
+Claude Desktop 자동 설치는 macOS와 Windows를 지원합니다. MCP 설정은 macOS의 `~/Library/Application Support/Claude/claude_desktop_config.json`, Windows의 `%APPDATA%\Claude\claude_desktop_config.json`에 병합합니다. Desktop은 사용자 설정이므로 선택한 프로젝트의 `--cwd`가 연결 대상이 됩니다. 생성한 ZIP은 앱의 Skill 업로드 UI에서 직접 추가해야 하며 업데이트 후에는 새 ZIP을 다시 업로드합니다. 계정·앱의 업로드 지원 여부는 [Claude 공식 Skill 안내](https://support.claude.com/en/articles/12512180-use-skills-in-claude)를 확인하세요.
+
+게시 전에는 `--local`을 사용하세요. 실제 Node 실행 파일과 `dist/cli.js`의 절대 경로를 MCP 설정에 넣으므로 해당 설치 디렉터리를 유지해야 합니다. Windows GUI에서도 실행 경로를 확실히 고정하는 이 방식을 권장합니다. `--local`을 생략한 설정은 `npx`를 사용하므로 클라이언트에서 `npx`를 실행할 수 있어야 합니다.
+
+지원 옵션:
+
+```sh
+steercards setup [--client CLIENT] [--local | --npx] [--dry-run] [--cwd PATH] [--env-file PATH] [--url URL] [--mode compact|full]
+```
+
+`--dry-run`은 파일을 쓰지 않고 예정된 작업만 보여줍니다. 키를 출력하거나 연결 검사를 수행하지 않습니다. `setup`은 코드 클라이언트를 프로젝트 범위에 설치하며 `--global`을 지원하지 않습니다. `--env-file`, `--url`, `--mode`는 생성할 MCP 실행 옵션에도 반영됩니다. 같은 버전에서도 옵션을 바꾸면 해당 설정을 갱신합니다. `--local`과 `--npx`는 함께 사용할 수 없으며 `--npx`는 `setup` 전용 옵션입니다.
+
+```sh
+steercards setup --client cursor --cwd /absolute/path/project --dry-run
+```
+
+`setup`은 기존 설정의 Steercards MCP 항목만 병합하고 다른 서버·설정·주석과 사용자 파일은 보존합니다. `.steercards/setup/*.json`에 설치한 버전·옵션과 관리 파일의 해시를 기록하여 다음 업데이트에서 비교합니다. 관리 기록 없이 이전 `config`·`skill install` 명령으로 설치한 경우에도 현재 생성할 MCP 관리 필드와 Skill 파일이 같으면 관리 대상으로 등록합니다. Codex TOML은 이전 `config`의 정확한 출력 형식이어야 합니다. 그 외의 기존 충돌 항목이나 사용자가 수정한 관리 설정·Skill이 있으면 파일을 쓰기 전에 중단합니다. 충돌 시 수정 내용을 별도로 보관하고 기존 항목과 설치 기록을 검토한 뒤 수동 병합하거나 다시 설치하세요. 일반적인 쓰기 실패는 이전 파일로 복구하지만 전원 차단까지 포함한 원자적 저장을 보장하지 않습니다.
 
 기본 `compact` 모드가 노출하는 도구는 다음 네 개입니다.
 
@@ -103,10 +121,10 @@ steercards config claude-desktop --cwd /absolute/path/project
 | `steercards_call_tool` | 확인한 이름과 인자로 원격 도구 호출 |
 | `steercards_get_guide` | Steercards 사용 가이드 조회 |
 
-클라이언트가 개별 도구 노출을 필요로 하면 설정 생성 시 `--mode full`을 추가하세요.
+클라이언트가 개별 도구 노출을 필요로 하면 `setup`에 `--mode full`을 추가하세요.
 
 ```sh
-steercards config codex-app --cwd /absolute/path/project --mode full
+steercards setup --client codex-app --cwd /absolute/path/project --mode full
 steercards serve --cwd /absolute/path/project --mode full
 ```
 
@@ -128,31 +146,22 @@ steercards call <tool-name> --stdin --cwd /absolute/path/project < arguments.jso
 
 `serve`는 MCP STDIO 연결용입니다. 터미널에서 직접 실행하면 클라이언트 입력을 기다리는 것이 정상입니다.
 
-## Skill 설치
+## 고급: 설정 조각과 Skill 개별 설치
 
-Skill은 에이전트에게 도구 탐색 순서와 Steercards 작업 요령을 제공합니다. MCP 연결과 Agent Key 설정은 별도로 필요합니다.
+기본 설치·업데이트에는 `setup`을 사용하세요. 직접 설정을 관리하려면 기존 개별 명령도 사용할 수 있습니다.
 
 ```sh
+steercards config codex-app --cwd /absolute/path/project
+steercards config cursor --cwd /absolute/path/project --local
 steercards skill install --client codex --cwd /absolute/path/project
 steercards skill install --client claude-code --cwd /absolute/path/project
 steercards skill install --client cursor --cwd /absolute/path/project
-```
-
-| 클라이언트 | 프로젝트 설치 위치 | 공식 안내 |
-| --- | --- | --- |
-| Codex | `.agents/skills/steercards/` | [Codex Skills](https://developers.openai.com/codex/skills) |
-| Claude Code | `.claude/skills/steercards/` | [Claude Code Skills](https://code.claude.com/docs/en/skills) |
-| Cursor | `.cursor/skills/steercards/` | [Cursor Skills](https://cursor.com/docs/skills) |
-
-`--global`을 추가하면 위 상대 경로를 사용자 홈 아래에 적용합니다(예: Codex의 `~/.agents/skills/steercards/`). 같은 내용의 재설치는 성공하며 직접 수정한 파일을 덮어쓰려 하면 중단합니다. 업데이트 전에 변경한 파일을 백업하거나 병합하세요.
-
-Claude Desktop은 로컬 Skill 폴더 설치 대신 ZIP을 만들어 앱의 Skill 업로드 UI로 추가합니다. 업로드 지원 여부는 계정·앱 설정에 따라 달라집니다. [Claude 공식 Skill 업로드 안내](https://support.claude.com/en/articles/12512180-use-skills-in-claude)를 확인하세요.
-
-```sh
 steercards skill export --output /absolute/path/steercards-skill.zip
 ```
 
-`compact` 모드에서는 Skill을 업로드하지 않아도 `steercards_get_guide` 도구로 가이드를 읽을 수 있습니다. `full` 모드는 이 도구를 추가하지 않으며, `steercards://guide/overview`와 주제별 MCP resource를 제공합니다. Claude Desktop에서 `full` 모드를 사용할 때는 Skill ZIP을 업로드하거나, 클라이언트가 resource 읽기를 지원하는 경우 해당 resource로 가이드를 읽으세요.
+`config`는 설정 조각만 출력하며 클라이언트 설정을 수정하지 않습니다. 출력 내용을 기존 파일에 수동 병합해야 합니다. `skill install --global`은 사용자 홈 아래의 해당 클라이언트 Skill 디렉터리에 개별 설치합니다. 개별 Skill 설치는 같은 내용이면 성공하고 변경된 기존 디렉터리는 덮어쓰지 않습니다. 이 명령들은 MCP·Skill을 함께 갱신하거나 `setup`의 관리 기록을 만들지 않습니다.
+
+Skill은 도구 탐색 순서와 작업 요령을 제공합니다. `compact` 모드에서는 Skill을 업로드하지 않아도 `steercards_get_guide` 도구로 가이드를 읽을 수 있습니다. `full` 모드는 이 도구를 추가하지 않으며, `steercards://guide/overview`와 주제별 MCP resource를 제공합니다. Claude Desktop에서 `full` 모드를 사용할 때는 Skill ZIP을 업로드하거나, 클라이언트가 resource 읽기를 지원하는 경우 해당 resource로 가이드를 읽으세요.
 
 ## 검증 범위와 문제 해결
 
@@ -163,7 +172,7 @@ Claude Code, Codex 앱·CLI, Cursor, Claude Desktop 각각의 네이티브 UI �
 - 인증 오류: `doctor --cwd …`로 키 탐지 여부를 확인하고 `doctor --connect`로 읽기 전용 연결을 검사하세요. 키 값은 보고서나 이슈에 붙이지 마세요.
 - GUI에서만 실행 실패: Node 22 이상을 설치하고 `--local` 설정을 다시 생성해 절대 실행 경로와 `--cwd`를 확인하세요.
 - 도구가 보이지 않음: MCP 서버를 다시 연결하고 `tools`로 원격 목록을 확인하세요. 특정 키에 없는 권한을 이 패키지가 추가하지는 않습니다.
-- 설정 충돌: 출력 전체로 기존 파일을 덮어쓰지 말고 `steercards` 서버 항목만 병합하세요. TOML에서는 같은 테이블을 중복 선언하지 마세요.
+- 설치 충돌: `setup --dry-run`으로 예정된 작업을 확인하고 `.steercards/setup/` 기록과 기존 Steercards 항목·Skill 수정 사항을 검토하세요. 기존 파일을 통째로 교체하거나 관리 기록만 지워서 업데이트를 강제하지 마세요.
 
 ## 개발·기여·릴리스
 
@@ -184,7 +193,7 @@ CI는 Linux·macOS·Windows의 Node 22·24에서 같은 검사를 실행합니�
 1. 공개 저장소를 확정하고 `package.json`의 `repository`, `bugs`, `homepage`를 실제 주소로 추가합니다.
 2. npm의 `@steercards` scope 권한과 이름·버전 사용 가능 여부를 확인합니다. `npm whoami`, `npm view @steercards/agent-tools`로 계정과 기존 배포를 확인합니다.
 3. 위 검사를 실행하고 `npm pack --dry-run`의 파일 목록을 검사합니다. `.env`, 키, fixture 비밀이 포함되지 않아야 하며 `dist`, Skill, README, LICENSE가 포함되어야 합니다.
-4. `npm pack`으로 tarball을 만들고 별도 디렉터리에서 설치·`--help`·설정 생성·Skill ZIP을 확인합니다. 테스트용 계정으로 읽기 전용 실제 MCP 연결과 사용할 각 앱의 연결을 확인합니다.
+4. `npm pack`으로 tarball을 만들고 별도 디렉터리에서 설치·`--help`·`setup --dry-run`·실제 설치와 같은 버전 재실행·관리 기록을 통한 업데이트·Skill ZIP을 확인합니다. 테스트용 계정으로 읽기 전용 실제 MCP 연결과 사용할 각 앱의 연결을 확인합니다.
 5. [npm 공식 게시 안내](https://docs.npmjs.com/creating-and-publishing-scoped-public-packages)에 따라 인증·2FA 또는 trusted publishing을 구성합니다. 지원되는 CI에서 공개 저장소와 출처 증명을 연결할 때는 [npm provenance 안내](https://docs.npmjs.com/generating-provenance-statements)를 따릅니다. 검토가 끝난 릴리스만 `npm publish --access public`로 게시합니다.
 
 이 저장소의 CI는 검증만 수행하며 npm에 자동 게시하지 않습니다.

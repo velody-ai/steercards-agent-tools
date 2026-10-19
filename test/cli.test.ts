@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtemp, realpath, writeFile, rm } from 'node:fs/promises';
+import { mkdtemp, realpath, writeFile, readFile, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -51,5 +51,45 @@ test('CLI rejects ambiguous and invalid call input before connecting', () => {
     assert.equal(result.status, 1);
     assert.equal(result.stdout, '');
     assert.equal(JSON.parse(result.stderr).ok, false);
+  }
+});
+
+test('setup installs MCP and skill with one command, preserves dotenv, and reruns unchanged', async t => {
+  const cwd = await realpath(await mkdtemp(join(tmpdir(), 'steercards-setup-cli-')));
+  t.after(() => rm(cwd, { recursive: true, force: true }));
+  const dotenv = 'STEERCARDS_AGENT_KEY=fixture-setup-must-not-read-or-print\n';
+  await writeFile(join(cwd, '.env'), dotenv);
+  const installed = cli(['setup', '--client', 'codex-app', '--local', '--cwd', cwd]);
+  assert.equal(installed.status, 0, installed.stderr);
+  const report = JSON.parse(installed.stdout);
+  assert.equal(report.status, 'installed');
+  assert.ok(report.paths.config.endsWith('config.toml'));
+  assert.ok((await readFile(report.paths.config, 'utf8')).includes('mcp_servers.steercards'));
+  assert.ok((await readFile(join(report.paths.skill, 'SKILL.md'), 'utf8')).includes('name: steercards'));
+  assert.equal(await readFile(join(cwd, '.env'), 'utf8'), dotenv);
+  assert.ok(!installed.stdout.includes('fixture-setup-must-not-read-or-print'));
+  const again = cli(['setup', '--client', 'codex-cli', '--cwd', cwd]);
+  assert.equal(again.status, 0, again.stderr);
+  assert.equal(JSON.parse(again.stdout).status, 'unchanged');
+  const switched = cli(['setup', '--client', 'codex', '--npx', '--cwd', cwd]);
+  assert.equal(switched.status, 0, switched.stderr);
+  assert.equal(JSON.parse(switched.stdout).status, 'updated');
+  assert.match(await readFile(report.paths.config, 'utf8'), /command = \"npx\"/);
+});
+
+test('setup preview and noninteractive selection failures never write files', async t => {
+  const cwd = await realpath(await mkdtemp(join(tmpdir(), 'steercards-setup-preview-')));
+  t.after(() => rm(cwd, { recursive: true, force: true }));
+  for (const args of [
+    ['setup', '--client', 'cursor', '--dry-run', '--cwd', cwd],
+    ['setup', '--cwd', cwd],
+    ['setup', '--client', 'codex', '--global', '--cwd', cwd],
+    ['setup', '--client', 'unknown', '--cwd', cwd],
+    ['setup', '--client', 'codex', '--local', '--npx', '--cwd', cwd],
+    ['setup', '--client', 'codex', '--output', 'unexpected.zip', '--cwd', cwd],
+  ]) {
+    const result = cli(args);
+    assert.equal(result.status, args.includes('--dry-run') ? 0 : 1, result.stderr);
+    assert.deepEqual(await readdir(cwd), []);
   }
 });
