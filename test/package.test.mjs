@@ -87,7 +87,9 @@ test('packed npm launchers preserve project env-file semantics', { timeout: 2400
   });
 
   await t.test('real offline npx invokes the installed package with a relative env-file', async () => {
-    const npx = process.platform === 'win32' ? 'npx.cmd' : 'npx';
+    // A bare quoted batch name gives npm's %~dp0 the caller directory. Resolve
+    // the bundled launcher as a shell/PATH lookup normally would before cmd.
+    const npx = process.platform === 'win32' ? join(dirname(process.execPath), 'npx.cmd') : 'npx';
     const report = json(await run(npx, ['--offline', '--', 'steercards', ...doctor, '--env-file', 'alternate.env'], { cwd: consumer }));
     assert.equal(report.envFile, join(project, 'alternate.env'));
     assert.equal(report.keySource, 'env-file');
