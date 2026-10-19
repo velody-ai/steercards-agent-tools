@@ -1,13 +1,12 @@
 import { readFile, readdir, mkdir, lstat, rename, rm, mkdtemp, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { homedir } from 'node:os';
-import { fileURLToPath } from 'node:url';
 import { zipSync } from 'fflate';
 import { validateMcpUrl } from './config.js';
+import { packageRoot, packageInfo } from './package.js';
 
-export const packageRoot = fileURLToPath(new URL('../', import.meta.url));
+export { packageRoot, packageInfo } from './package.js';
 export const skillRoot = join(packageRoot, 'skills', 'steercards');
-export const packageInfo: { name: string; version: string } = JSON.parse(await readFile(join(packageRoot, 'package.json'), 'utf8'));
 export const clients = ['claude-code', 'codex', 'codex-app', 'codex-cli', 'cursor', 'claude-desktop'] as const;
 export type Client = typeof clients[number];
 

@@ -13,10 +13,11 @@ function cli(args: string[], input?: string) {
   return spawnSync(process.execPath, ['--import', 'tsx', 'src/cli.ts', ...args], { cwd: root, env, input, encoding: 'utf8', timeout: 10000 });
 }
 
-test('CLI help, version and config do not require credentials', () => {
+test('CLI help, version and config do not require credentials', async () => {
   const version = cli(['--version']);
   assert.equal(version.status, 0);
-  assert.equal(version.stdout.trim(), '0.1.0');
+  const pkg = JSON.parse(await readFile(join(root, 'package.json'), 'utf8'));
+  assert.equal(version.stdout.trim(), pkg.version);
   const help = cli(['--help']);
   assert.equal(help.status, 0);
   assert.match(help.stdout, /--env-file/);

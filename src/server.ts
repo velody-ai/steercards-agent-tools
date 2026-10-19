@@ -7,6 +7,7 @@ import {
   type CallToolResult, type Tool,
 } from '@modelcontextprotocol/sdk/types.js';
 import type { Runtime } from './runtime.js';
+import { packageInfo } from './package.js';
 
 export interface ServerOptions { mode: 'compact' | 'full' }
 
@@ -65,7 +66,7 @@ function assertKeys(args: Record<string, unknown>, keys: string[]): void {
 /** Low-level Server preserves arbitrary upstream JSON Schemas and tool metadata. */
 export function createServer(runtime: Runtime, { mode }: ServerOptions): Server {
   if (mode !== 'compact' && mode !== 'full') throw new Error('Server mode must be compact or full.');
-  const server = new Server({ name: '@steercards/agent-tools', version: '0.1.0' }, {
+  const server = new Server({ name: packageInfo.name, version: packageInfo.version }, {
     capabilities: { tools: {}, resources: {} }, instructions,
   });
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
