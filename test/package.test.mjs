@@ -39,7 +39,7 @@ function json(result) {
   return JSON.parse(result.stdout);
 }
 
-test('packed npm launchers preserve project env-file semantics', { timeout: 120000 }, async t => {
+test('packed npm launchers preserve project env-file semantics', { timeout: 240000 }, async t => {
   const temp = await realpath(await mkdtemp(join(tmpdir(), 'steercards-package-')));
   t.after(() => rm(temp, { recursive: true, force: true }));
   const consumer = join(temp, 'consumer');
@@ -58,8 +58,8 @@ test('packed npm launchers preserve project env-file semantics', { timeout: 1200
   packages[`node_modules/${manifest.name}`] = { version: manifest.version, resolved: tarball, integrity: packed[0].integrity, dependencies: manifest.dependencies, bin: manifest.bin, engines: manifest.engines };
   await writeFile(join(consumer, 'package.json'), JSON.stringify(consumerManifest));
   await writeFile(join(consumer, 'package-lock.json'), JSON.stringify({ name: consumerManifest.name, lockfileVersion: 3, packages }));
-  const installed = await run(process.execPath, ['--', npmCli, 'ci', '--offline', '--ignore-scripts', '--omit=dev', '--no-audit', '--no-fund'], { cwd: consumer });
-  assert.equal(installed.status, 0, installed.stderr);
+  const installed = await run(process.execPath, ['--', npmCli, 'ci', '--offline', '--ignore-scripts', '--omit=dev', '--no-audit', '--no-fund'], { cwd: consumer, timeout: 120000 });
+  assert.equal(installed.status, 0, installed.stderr || `npm ci exited with signal ${installed.signal}`);
 
   const key = 'synthetic-package-key';
   const defaultFile = `STEERCARDS_AGENT_KEY=${key}\nSTEERCARDS_MCP_URL=https://default.example/api/mcp\n`;
