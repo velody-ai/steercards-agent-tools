@@ -14,6 +14,12 @@ Only one of `before`, `after`, `pageCursor`, `refreshKeys` is allowed per call. 
 
 `request_human_check` names a real workspace member, prod/local environment and action/expected-result steps. It creates an item in the person's check inbox. Optional pass/fail business-status transitions must reflect the intended task. Query `list_human_checks` / `get_human_check` for actual verdicts and evidence. Creating the request is not a passed check, and "human check" is not a board status to invent.
 
+Describe the live tool before constructing a request. Verification can optionally provide `resultOptions: [{id,label,description?,verdict}]`: 2–6 ordered choices shared by every step. IDs are unique ASCII letters/digits/underscore/hyphen (1–64 characters), labels are 1–120 characters and descriptions at most 500. Each verdict explicitly means `pass`, `fail` or `inconclusive`; never infer meaning from the label. Omit resultOptions to retain legacy pass/fail choices. Explicit null and mixing resultOptions with a question are invalid.
+
+For example, use `works / Normal operation / pass`, `partial / Partly working / fail`, and `unable / Cannot verify / inconclusive`. Any failed step makes the result `failed`; otherwise any inconclusive step makes it `answered`; only all-pass becomes `passed`. A fail requires a memo. Inconclusive permits an optional memo and never means success. Verification `followUps` uses `onPassed`, `onFailed` and `onAnswered` once after aggregation. Omitted follow-ups keep the card state; inconclusive never falls back to legacy onFailStatus. For per-choice moves, use a single-selection question instead.
+
+The assigned person chooses in the web inbox, saves each step, then explicitly submits the final response. Selection and step saving do not finalize the check or create the completion comment/webhook. Do not answer on the person's behalf. Read `steps[].selectedOptionId` and `selectedOptionSnapshot` for original ID, label, description and verdict; final `response` preserves resultOptions and steps. Processed history, comments and `human_check.completed` retain the original choice. Inspect actual `followUpResult` as current card state, permissions or workflow may block a requested move.
+
 `set_agent_status` / `clear_agent_status` expose working/input-wait/error. A waiting question can create a pinned agent comment; it is not equivalent to a step-by-step human check. Working status needs refresh at least every ten minutes. Check claim fences when the card is claim-managed.
 
 ## Reserve shared resources
