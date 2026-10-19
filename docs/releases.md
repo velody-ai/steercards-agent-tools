@@ -45,7 +45,7 @@
 
 - OIDC 인증 오류: npm 설정의 저장소·workflow 파일명·`npm` 환경·직접 게시 권한을 확인합니다. GitHub-hosted runner와 npm 최소 버전도 확인합니다. 임시 해결용 토큰을 추가하지 않습니다.
 - 태그·버전 또는 main 포함 검사 실패: 릴리스가 가리키는 커밋과 버전 변경 PR을 확인합니다. 이미 게시된 npm 버전은 덮어쓰지 않습니다.
-- staged 버전은 직접 게시와 같은 버전 공간을 사용합니다. `0.1.0`을 stage한 상태에서 같은 버전을 직접 게시하면 `E409`가 발생했습니다. 최초 placeholder만 있는 패키지에서 마지막 stage를 reject하자 패키지와 접근 설정이 사라지고 OIDC 재시도는 `E404`로 실패했습니다([실행 기록](https://github.com/velody-ai/steercards-agent-tools/actions/runs/39330030138)). 초기 설정에 stage → reject 절차를 사용하지 않습니다. 레지스트리 상태와 실제 게시 버전을 확인한 뒤 일반 최초 게시와 trusted publisher 설정 순서를 따릅니다.
+- staged 버전은 직접 게시와 같은 버전 공간을 사용합니다. `0.1.0`을 stage한 상태에서 같은 버전을 직접 게시하면 `E409`가 발생했습니다. 최초 placeholder만 있는 패키지에서 마지막 stage를 reject하자 패키지가 레지스트리에서 조회되지 않고 OIDC 재시도는 `E404`로 실패했습니다([실행 기록](https://github.com/velody-ai/steercards-agent-tools/actions/runs/39330030138)). trusted publisher 설정의 삭제 여부는 이 결과만으로 판단하지 않습니다. 초기 설정에 stage → reject 절차를 사용하지 않습니다. 일반 최초 게시 후 패키지와 기존 trusted publisher 설정을 확인하고 필요한 설정을 진행합니다.
 - 게시 후 후속 단계가 실패했다면 먼저 `npm view`로 게시 여부를 확인합니다. 미게시일 때만 실패한 Actions 작업을 재실행합니다. 이미 게시된 버전에 다시 `npm publish`하면 오류가 납니다.
 
 근거: [npm trusted publishing](https://docs.npmjs.com/trusted-publishers/), [npm provenance](https://docs.npmjs.com/generating-provenance-statements/), [npm trust 전제 조건](https://docs.npmjs.com/cli/v11/commands/npm-trust/).
