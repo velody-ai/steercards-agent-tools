@@ -27,8 +27,8 @@ npm pack --dry-run
 - `.steercards/setup/` 기록의 버전·옵션·해시를 다음 업데이트의 기준으로 사용합니다. 실제 개인 설치 기록과 ZIP은 테스트 fixture나 커밋에 넣지 마세요.
 - `setup`은 키 없이 실행하고 `.env`를 생성·변경하지 않습니다. `config`는 설정 조각만 출력하며 개별 `skill install`은 사용자 수정 파일을 덮어쓰지 않습니다.
 
-공개 저장소의 실제 주소는 첫 릴리스 전에 확정합니다. 확정 전에는 전달받은 소스의 유지관리자에게 변경 내용을 공유하세요. 보안 문제는 공개 이슈에 올리지 말고 [SECURITY.md](SECURITY.md)를 따릅니다.
+변경 제안은 [공개 저장소](https://github.com/velody-ai/steercards-agent-tools)에 PR로 올려주세요. 보안 문제는 공개 이슈에 올리지 말고 [SECURITY.md](SECURITY.md)를 따릅니다.
 
 ## 릴리스
 
-릴리스 담당자는 README의 릴리스 체크리스트를 수행합니다. npm 이름·scope 권한·저장소 메타데이터를 확인하고 실제 tarball의 포함 파일과 설치 동작을 검사합니다. CI 통과 자체가 npm 게시를 수행하지는 않습니다.
+릴리스 담당자는 [npm 릴리스 안내](docs/releases.md)를 따릅니다. 버전 변경 PR을 main에 병합하고 실제 tarball을 검사한 뒤 일치하는 태그의 안정 버전 GitHub Release를 게시합니다. 일반 CI와 main 병합은 검증을 수행하고, Release 게시 이벤트가 npm trusted publishing을 실행합니다.
