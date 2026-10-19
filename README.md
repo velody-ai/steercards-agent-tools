@@ -186,17 +186,9 @@ npm pack --dry-run
 
 CI는 Linux·macOS·Windows의 Node 22·24에서 같은 검사를 실행합니다. 테스트는 로컬 fixture를 사용하며 실제 Agent Key가 필요하지 않습니다. 기여 방법은 [CONTRIBUTING.md](CONTRIBUTING.md), 보안 보고는 [SECURITY.md](SECURITY.md)를 참고하세요.
 
-실제 공개 저장소 주소와 npm scope 소유권은 첫 게시 전에 확정해야 합니다. 아직 존재하지 않는 저장소 주소나 배지를 문서에 넣지 않습니다.
+공개 소스는 [velody-ai/steercards-agent-tools](https://github.com/velody-ai/steercards-agent-tools)에서 관리합니다. 안정 버전 GitHub Release를 게시하면 `publish.yml`이 태그·패키지 버전과 main 포함 여부를 확인하고 검사를 다시 실행한 뒤 npm에 게시합니다. 인증은 GitHub OIDC trusted publishing을 사용하며 공개 패키지에 provenance를 연결합니다.
 
-첫 릴리스 전 체크리스트:
-
-1. 공개 저장소를 확정하고 `package.json`의 `repository`, `bugs`, `homepage`를 실제 주소로 추가합니다.
-2. npm의 `@steercards` scope 권한과 이름·버전 사용 가능 여부를 확인합니다. `npm whoami`, `npm view @steercards/agent-tools`로 계정과 기존 배포를 확인합니다.
-3. 위 검사를 실행하고 `npm pack --dry-run`의 파일 목록을 검사합니다. `.env`, 키, fixture 비밀이 포함되지 않아야 하며 `dist`, Skill, README, LICENSE가 포함되어야 합니다.
-4. `npm pack`으로 tarball을 만들고 별도 디렉터리에서 설치·`--help`·`setup --dry-run`·실제 설치와 같은 버전 재실행·관리 기록을 통한 업데이트·Skill ZIP을 확인합니다. 테스트용 계정으로 읽기 전용 실제 MCP 연결과 사용할 각 앱의 연결을 확인합니다.
-5. [npm 공식 게시 안내](https://docs.npmjs.com/creating-and-publishing-scoped-public-packages)에 따라 인증·2FA 또는 trusted publishing을 구성합니다. 지원되는 CI에서 공개 저장소와 출처 증명을 연결할 때는 [npm provenance 안내](https://docs.npmjs.com/generating-provenance-statements)를 따릅니다. 검토가 끝난 릴리스만 `npm publish --access public`로 게시합니다.
-
-이 저장소의 CI는 검증만 수행하며 npm에 자동 게시하지 않습니다.
+최초 npm 설정, 릴리스 명령, 게시·설치 확인과 실패 대응은 [npm 릴리스 안내](docs/releases.md)를 따릅니다.
 
 ## 라이선스
 

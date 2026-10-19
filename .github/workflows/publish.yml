@@ -1,0 +1,64 @@
+name: Publish to npm
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: npm-publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.repository == 'velody-ai/steercards-agent-tools' && !github.event.release.prerelease
+    runs-on: ubuntu-latest
+    environment: npm
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.event.release.tag_name }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: '24'
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+
+      - name: Validate release version and npm support
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { readFileSync } from 'node:fs';
+          import { execFileSync } from 'node:child_process';
+          const pkg = JSON.parse(readFileSync('package.json', 'utf8'));
+          assert.equal(pkg.name, '@steercards/agent-tools');
+          assert.match(pkg.version, /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/);
+          assert.equal(process.env.RELEASE_TAG, `v${pkg.version}`, 'Release tag must match package.json');
+          const npmVersion = execFileSync('npm', ['--version'], { encoding: 'utf8' }).trim();
+          const [major, minor, patch] = npmVersion.split('.').map(Number);
+          assert(major > 11 || (major === 11 && (minor > 5 || (minor === 5 && patch >= 1))), 'Trusted publishing requires npm >=11.5.1');
+          console.log(`Verified ${pkg.name}@${pkg.version} with npm ${npmVersion}`);
+          NODE
+
+      - name: Verify release commit is on main
+        run: git merge-base --is-ancestor HEAD refs/remotes/origin/main
+
+      - run: npm ci
+      - run: npm run check
+      - run: npm test
+      - run: npm run build
+      - run: npm pack --dry-run --ignore-scripts
+
+      - name: Publish with npm trusted publishing
+        run: npm publish --access public --provenance --ignore-scripts
