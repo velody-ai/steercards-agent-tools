@@ -7,6 +7,12 @@ description: Manage Steercards workspaces, boards, cards, files and agent collab
 
 Use the connected Steercards toolkit MCP or its `steercards` CLI. Authentication comes from `STEERCARDS_AGENT_KEY`, including a local dotenv file configured for the toolkit. Keep credentials out of tool arguments, logs and committed files. GUI hosts can use an absolute env-file path; their working directory may differ from the project.
 
+## Connecting from an installation prompt
+
+When the user provides a Steercards installation prompt, run its `setup --setup-code-stdin` command in the intended project with `--cwd . --env-file .env` and the prompt's explicit MCP `--url`. Pass the short-lived code through stdin. The installer exchanges it once, saves the Agent Key only in the project `.env`, protects Git ignore rules, installs MCP and this skill, and checks the connection. Report the safe installation summary; never print the resulting key or inspect the exchange body for chat output.
+
+An existing project key is kept without consuming the code. Replace it only when requested, using `--replace-agent-key`. Automatic credential writes support only the project root `.env`. Local configuration/skill conflicts or a tracked `.env` must be resolved before redeeming. If credentials were saved but installation or doctor failed, preserve `.env` and rerun normal setup/doctor without a code. After an uncertain exchange or failed key save, ask for a fresh app-generated prompt and direct the user to remove unused issued keys in Steercards; do not replay the code or request the long-lived key in chat. Client restart/reconnect and Desktop Skill ZIP upload may still be needed.
+
 ## Discover only what the task needs
 
 1. Search capabilities: `steercards_search_tools({query: "card context", limit: 5})`.

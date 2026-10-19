@@ -8,10 +8,12 @@ import { Runtime } from './runtime.js';
 import { startServer } from './server.js';
 import { clientConfig, installSkill, exportSkill, packageInfo } from './install.js';
 import { setup } from './setup.js';
+import { setupWithCode } from './setup-with-code.js';
 
 const help = `Steercards agent tools ${packageInfo.version}
 
 steercards setup [--client CLIENT] [--local | --npx] [--dry-run]
+  [--setup-code-stdin] [--replace-agent-key]
 steercards serve [--mode compact|full]
 steercards tools [query] [--limit 10]
 steercards describe NAME
@@ -29,6 +31,9 @@ setup installs MCP configuration and the skill together; rerun to update both.
 setup uses project scope (Desktop uses its user configuration and a project ZIP).
 --npx explicitly switches an existing local setup to a pinned npm package.
 --dry-run previews setup without writing files. No key is needed for setup.
+--setup-code-stdin reads a one-use installation code, protects the project .env,
+  installs MCP and the skill, then checks the connection. Existing keys are kept.
+--replace-agent-key explicitly replaces the project .env Agent Key.
 config only prints a snippet and never edits host settings.
 --local uses this installation's absolute Node/CLI paths (works before npm release).
 Claude Desktop: upload the skill ZIP, use compact get_guide, or full guide resources.
@@ -57,6 +62,18 @@ async function stdinText(): Promise<string> {
   return Buffer.concat(chunks).toString('utf8');
 }
 
+async function installationCode(): Promise<string> {
+  const chunks: Buffer[] = [];
+  let size = 0;
+  for await (const chunk of process.stdin) {
+    const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    size += bytes.length;
+    if (size > 1024) throw new Error('Installation code input is too large.');
+    chunks.push(bytes);
+  }
+  return Buffer.concat(chunks).toString('utf8').replace(/\r?\n$/, '');
+}
+
 let secret = process.env.STEERCARDS_AGENT_KEY;
 async function main() {
   const { values, positionals } = parseArgs({ allowPositionals: true, strict: true, options: {
@@ -65,6 +82,7 @@ async function main() {
     client: { type: 'string' }, global: { type: 'boolean' }, output: { type: 'string' },
     limit: { type: 'string' }, connect: { type: 'boolean' }, local: { type: 'boolean' },
     'dry-run': { type: 'boolean' }, npx: { type: 'boolean' },
+    'setup-code-stdin': { type: 'boolean' }, 'replace-agent-key': { type: 'boolean' },
     help: { type: 'boolean', short: 'h' }, version: { type: 'boolean', short: 'v' },
   } });
   if (values.version) { process.stdout.write(packageInfo.version + '\n'); return; }
@@ -78,6 +96,7 @@ async function main() {
       if (values[option] !== undefined) throw new Error(`--${option} is not supported by setup.`);
     }
     if (values.global) throw new Error('setup uses project scope; omit --global. Claude Desktop configuration is user-scoped.');
+    if (values['replace-agent-key'] && !values['setup-code-stdin']) throw new Error('--replace-agent-key requires --setup-code-stdin.');
     if (values.local && values.npx) throw new Error('Choose only one of --local or --npx.');
     let client = values.client;
     if (!client) {
@@ -91,9 +110,17 @@ async function main() {
       } finally { prompt.close(); }
       if (!client) throw new Error('No client selected. Nothing was installed.');
     }
-    output(await setup({ ...options, client, local: values.npx ? false : values.local, mode: values.mode, dryRun: values['dry-run'] }));
+    const setupOptions = { ...options, client, local: values.npx ? false : values.local, mode: values.mode, dryRun: values['dry-run'] };
+    if (values['setup-code-stdin']) {
+      const code = await installationCode();
+      secret = code;
+      const result = await setupWithCode({ ...setupOptions, code, replaceAgentKey: values['replace-agent-key'] });
+      output(result);
+      if (!result.ok) process.exitCode = 1;
+    } else output(await setup(setupOptions));
     return;
   }
+  if (values['setup-code-stdin'] || values['replace-agent-key']) throw new Error('Installation code options are only supported by setup.');
   if (values['dry-run'] || values.npx) throw new Error('--dry-run and --npx are only supported by setup.');
   if (command === 'config') {
     if (!name) throw new Error('Choose a client. Use --help.');

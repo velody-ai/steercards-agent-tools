@@ -36,6 +36,8 @@ export interface SetupDependencies {
   version?: string;
   beforeCommit?: () => Promise<void>;
   beforeWrite?: (path: string, index: number) => Promise<void>;
+  /** Runs under the config lock after all destinations are checked; dry runs never redeem codes. */
+  afterPreflight?: (context: { cwd: string; envFile?: string; dryRun: boolean }) => Promise<void>;
 }
 
 type ObjectValue = Record<string, unknown>;
@@ -323,7 +325,8 @@ export async function setup(options: SetupOptions, dependencies: SetupDependenci
     ? [`Restart Claude Desktop to load the MCP server.`, `Upload ${zipPath} in Claude's skill settings. Repeat the upload after a skill update.`, 'Set STEERCARDS_AGENT_KEY in the project .env or the referenced env file before using MCP.']
     : ['Restart or reload your client to load the MCP server and skill.', 'Set STEERCARDS_AGENT_KEY in the project .env or the referenced env file before using MCP.'];
   const report: SetupReport = { client, version, status: options.dryRun ? 'dry-run' : plan.size ? previous ? 'updated' : 'installed' : 'unchanged', paths, actions, nextSteps };
-  if (options.dryRun || !plan.size) return report;
+  if (options.dryRun) { await dependencies.afterPreflight?.({ cwd, envFile: effective.envFile, dryRun: true }); return report; }
+  if (!plan.size && !dependencies.afterPreflight) return report;
 
   // This is an ordinary-failure transaction, not a crash-atomic multi-file commit.
   const createdDirectories: string[] = [];
@@ -352,6 +355,21 @@ export async function setup(options: SetupOptions, dependencies: SetupDependenci
       if (!sameSnapshot(before, now)) throw new Error('A setup destination changed during preflight. Retry after reviewing the client configuration and skill; no files were changed.');
     }
     if (skillPath) await checkSkillTree(skillPath);
+    if (dependencies.afterPreflight) {
+      // Exercise destination directories before a one-use credential is consumed.
+      for (const parent of new Set([...plan.keys()].map(path => dirname(path)))) {
+        await ensureDirectory(parent);
+        const probe = join(parent, `.steercards-write-probe-${randomUUID()}.tmp`);
+        try { await atomicWrite(probe, Buffer.alloc(0), 0o600, ensureDirectory); }
+        catch { throw new Error('A setup destination does not allow safe writes. Check its directory permissions.'); }
+        finally { await rm(probe, { force: true }); }
+      }
+      for (const [path, before] of baselines) {
+        if (!sameSnapshot(before, await snapshot(path))) throw new Error('A setup destination changed during preflight. No credential was requested.');
+        if (plan.has(path) && before && (before.mode & 0o200) === 0) throw new Error('A setup destination is read-only. Change its permissions before installing credentials.');
+      }
+      await dependencies.afterPreflight({ cwd, envFile: effective.envFile, dryRun: false });
+    }
     let index = 0;
     for (const [path, bytes] of plan) {
       await dependencies.beforeWrite?.(path, index++);

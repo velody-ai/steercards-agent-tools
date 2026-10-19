@@ -9,6 +9,34 @@ Steercards의 전체 MCP 도구를 CLI와 에이전트에서 사용할 수 있�
 
 패키지 이름은 `@steercards/agent-tools`, 실행 명령은 `steercards`입니다. npm에서 설치하거나 소스에서 빌드해 사용할 수 있습니다.
 
+## 일회용 프롬프트로 연결
+
+Steercards의 Agent 연결 화면에서 클라이언트·OS·Key 설정을 선택하고 설치 프롬프트를 복사해 사용할 프로젝트의 에이전트에게 전달하세요. 프롬프트에는 10분 동안 한 번 사용할 설치 코드가 들어갑니다. 설치기는 코드를 실제 Agent Key로 교환하여 현재 프로젝트의 `.env`에만 저장하고, `.gitignore` 보호·MCP 설정·Skill 설치와 읽기 전용 연결 검사를 수행합니다. 장기 키를 프롬프트에 붙여넣을 필요가 없습니다.
+
+직접 실행하는 경우 아래 코드 자리를 앱에서 발급한 설치 코드로 바꿉니다. POSIX 셸 예시:
+
+```sh
+npx -y -- @steercards/agent-tools@latest setup --client codex-app --cwd . --env-file .env --url https://steercards.com/api/mcp --setup-code-stdin <<'STEERCARDS_SETUP_CODE'
+<일회용 설치 코드>
+STEERCARDS_SETUP_CODE
+```
+
+Windows PowerShell에서는 같은 코드를 here-string으로 전달합니다.
+
+```powershell
+@'
+<일회용 설치 코드>
+'@ | npx -y -- @steercards/agent-tools@latest setup --client codex-app --cwd . --env-file .env --url https://steercards.com/api/mcp --setup-code-stdin
+```
+
+`--cwd .`는 실행한 현재 프로젝트를 뜻하며 생략해도 같습니다. `--client`는 선택한 클라이언트로 바꾸고, 다른 서버를 사용한다면 그 서버의 MCP URL을 명시하세요. 설치 코드와 발급된 키는 명령 인자·출력·설치 기록에 넣지 않습니다. 자동 연결 검사는 호출 프로세스의 다른 키보다 저장한 `.env`의 키를 사용합니다.
+
+기존 `.env`의 다른 값·주석·개행을 보존합니다. 이미 Agent Key가 있으면 그대로 사용하고 코드를 교환하지 않습니다. 교체하려면 같은 setup 명령에 `--replace-agent-key`를 명시하세요. 이전 키를 서버에서 자동 폐기하지는 않습니다. 자동 쓰기는 프로젝트 루트 `.env`만 지원합니다. 이전 설치가 다른 env 파일을 참조하면 교환 전에 중단하므로 `--env-file .env`로 전환을 명시합니다.
+
+`.env`가 Git에 추적되거나 파일·설정·Skill 충돌, symlink, 잠금·쓰기 문제가 있으면 교환 전에 중단합니다. `.gitignore`의 기존 negation 뒤에 보호 규칙을 보완합니다. `--dry-run`은 코드를 소비하거나 파일을 쓰지 않습니다.
+
+키 저장 뒤 MCP·Skill 설치나 연결 검사에 실패해도 `.env`를 보존합니다. 충돌을 정리하고 코드 옵션 없이 일반 setup과 `doctor --connect`를 다시 실행하세요. 교환 응답 유실이나 키 저장 실패는 코드가 소비되었을 수 있으므로 앱에서 새 코드를 발급하고 사용하지 않는 발급 키를 폐기합니다. 실패 복구를 위해 키 원문을 채팅·로그에 붙여넣지 마세요. Desktop의 Skill ZIP 업로드와 클라이언트 재연결은 아래 안내를 따릅니다.
+
 ## 소스에서 설치
 
 소스 디렉터리에서 빌드한 뒤 `setup --local`을 실행합니다.
@@ -19,7 +47,7 @@ npm run build
 node -- /absolute/path/agent-tools/dist/cli.js setup --client codex-app --cwd /absolute/path/project --local
 ```
 
-`setup` 한 번으로 Steercards MCP 설정과 Skill을 함께 설치합니다. 키 없이 설치할 수 있으며 `.env`를 만들거나 덮어쓰지 않습니다. 설치 뒤 프로젝트에 `.env.example`을 참고한 `.env`를 만들고 실제 Agent Key를 입력하세요.
+코드 옵션 없는 `setup`은 Steercards MCP 설정과 Skill을 키 없이 설치하며 `.env`를 변경하지 않습니다. 수동 연결에서는 설치 뒤 프로젝트에 `.env.example`을 참고한 `.env`를 만들고 실제 Agent Key를 입력하세요.
 
 ```dotenv
 STEERCARDS_AGENT_KEY=your-agent-key
@@ -111,6 +139,7 @@ Claude Desktop 자동 설치는 macOS와 Windows를 지원합니다. MCP 설정�
 
 ```sh
 steercards setup [--client CLIENT] [--local | --npx] [--dry-run] [--cwd PATH] [--env-file PATH] [--url URL] [--mode compact|full]
+  [--setup-code-stdin] [--replace-agent-key]
 ```
 
 `--dry-run`은 파일을 쓰지 않고 예정된 작업만 보여줍니다. 키를 출력하거나 연결 검사를 수행하지 않습니다. `setup`은 코드 클라이언트를 프로젝트 범위에 설치하며 `--global`을 지원하지 않습니다. `--env-file`, `--url`, `--mode`는 생성할 MCP 실행 옵션에도 반영됩니다. 같은 버전에서도 옵션을 바꾸면 해당 설정을 갱신합니다. `--local`과 `--npx`는 함께 사용할 수 없으며 `--npx`는 `setup` 전용 옵션입니다.

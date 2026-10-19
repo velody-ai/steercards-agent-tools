@@ -25,7 +25,7 @@ npm pack --dry-run
 - `serve`의 stdout은 MCP 메시지 전용입니다. 진단 로그는 stderr로 출력하고 키를 노출하지 않습니다.
 - `setup`은 MCP 설정과 Skill을 함께 설치·업데이트합니다. Steercards 외 설정·주석·사용자 파일은 보존하고 관리 항목에 사용자 수정이 있으면 쓰기 전에 중단합니다. 임시 프로젝트와 격리한 홈 디렉터리에서 첫 설치, 재실행, 이전 버전 업데이트, 충돌, dry run과 쓰기 실패 복구를 검증하세요.
 - `.steercards/setup/` 기록의 버전·옵션·해시를 다음 업데이트의 기준으로 사용합니다. 실제 개인 설치 기록과 ZIP은 테스트 fixture나 커밋에 넣지 마세요.
-- `setup`은 키 없이 실행하고 `.env`를 생성·변경하지 않습니다. `config`는 설정 조각만 출력하며 개별 `skill install`은 사용자 수정 파일을 덮어쓰지 않습니다.
+- 코드 옵션 없는 `setup`은 키 없이 실행하고 `.env`를 변경하지 않습니다. 일회용 코드 모드에서는 로컬 충돌·추적·쓰기 점검을 교환 전에 완료하고, 저장 뒤 설치 실패 시 `.env`를 보존합니다. HTTP fixture와 packed bin/npx·Windows stdin 검사에서 코드·키 비노출 및 재교환 금지를 확인하세요. `config`는 설정 조각만 출력하며 개별 `skill install`은 사용자 수정 파일을 덮어쓰지 않습니다.
 
 변경 제안은 [공개 저장소](https://github.com/velody-ai/steercards-agent-tools)에 PR로 올려주세요. 보안 문제는 공개 이슈에 올리지 말고 [SECURITY.md](SECURITY.md)를 따릅니다.
 
