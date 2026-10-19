@@ -5,6 +5,8 @@ Tested on macOS with Node.js 22.19.0. GitHub Actions is configured for Linux, ma
 - TypeScript strict checking and build passed.
 - 28 automated tests passed, including real HTTP fixtures and SDK stdio child processes. Coverage includes dotenv precedence and directory boundaries, safe config generation, skill install/export, pagination, discovery after server changes, arbitrary schema/metadata preservation, HTTP diagnostics, redirect refusal, no replay after uncertain mutations, and shutdown during initialization.
 - Read-only production MCP checks passed through the HTTP runtime and through stdio in both modes. Compact exposed 4 toolkit tools; full exposed the 141 tools available to the test key at verification time. Both modes successfully called `list_workspaces`. Tool counts depend on server version and key permissions.
+- Claude Code 2.1.302 reported `Connected` in an isolated `claude mcp list` health check using a fixture key and the compact stdio server. Existing user MCP settings were not changed; this was a protocol health check, not a model-driven workflow.
+- The packed tarball was installed in a separate directory: npm bin execution, client config generation, skill installation, ZIP export and SDK guide loading all passed.
 - Skill frontmatter and references validated with the skill-creator validator.
 - npm tarball contents were inspected: compiled code, declarations, skill and documentation only; no environment files, tests, node_modules or Git data.
 
