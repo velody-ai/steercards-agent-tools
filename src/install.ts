@@ -15,7 +15,9 @@ export function clientConfig(client: string, options: { cwd?: string; local?: bo
   const mode = options.mode ?? 'compact';
   if (!['compact', 'full'].includes(mode)) throw new Error('Mode must be compact or full.');
   const cwd = resolve(options.cwd ?? process.cwd());
-  const args = options.local ? [join(packageRoot, 'dist', 'cli.js')] : ['-y', `${packageInfo.name}@${packageInfo.version}`];
+  // Node 22 pre-scans --env-file even after the script path. Protect both the
+  // local Node process and the outer npx process before passing CLI options.
+  const args = options.local ? ['--', join(packageRoot, 'dist', 'cli.js')] : ['-y', '--', `${packageInfo.name}@${packageInfo.version}`];
   args.push('serve', '--cwd', cwd, '--mode', mode);
   if (options.envFile) args.push('--env-file', resolve(cwd, options.envFile));
   if (options.url) {

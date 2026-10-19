@@ -28,6 +28,7 @@
   "scripts": {
     "build": "tsc",
     "test": "node --import tsx --test test/*.test.ts",
+    "test:package": "npm run build && node --test test/package.test.mjs",
     "check": "tsc --noEmit",
     "prepack": "npm run build"
   },

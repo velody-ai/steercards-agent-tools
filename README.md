@@ -16,7 +16,7 @@ Steercards의 전체 MCP 도구를 CLI와 에이전트에서 사용할 수 있�
 ```sh
 npm ci
 npm run build
-node /absolute/path/agent-tools/dist/cli.js setup --client codex-app --cwd /absolute/path/project --local
+node -- /absolute/path/agent-tools/dist/cli.js setup --client codex-app --cwd /absolute/path/project --local
 ```
 
 `setup` 한 번으로 Steercards MCP 설정과 Skill을 함께 설치합니다. 키 없이 설치할 수 있으며 `.env`를 만들거나 덮어쓰지 않습니다. 설치 뒤 프로젝트에 `.env.example`을 참고한 `.env`를 만들고 실제 Agent Key를 입력하세요.
@@ -32,7 +32,7 @@ STEERCARDS_MCP_URL=https://steercards.com/api/mcp
 클라이언트에서 필요한 MCP 승인과 재시작·다시 연결을 마친 뒤 확인합니다.
 
 ```sh
-node /absolute/path/agent-tools/dist/cli.js doctor --cwd /absolute/path/project --connect
+node -- /absolute/path/agent-tools/dist/cli.js doctor --cwd /absolute/path/project --connect
 ```
 
 `doctor`는 키 값을 출력하지 않습니다. `--connect`를 추가하면 원격 서버에 연결하고 워크스페이스 목록을 조회하는 읽기 전용 검사를 수행합니다. 생략하면 로컬 설정만 확인합니다.
@@ -42,7 +42,7 @@ node /absolute/path/agent-tools/dist/cli.js doctor --cwd /absolute/path/project 
 처음 설치할 때와 새 버전으로 업데이트할 때 같은 명령을 사용합니다.
 
 ```sh
-npx -y @steercards/agent-tools@latest setup --client codex-app --cwd /absolute/path/project
+npx -y -- @steercards/agent-tools@latest setup --client codex-app --cwd /absolute/path/project
 ```
 
 실행한 패키지 버전의 MCP 설정과 Skill을 함께 적용합니다. npx 기반 MCP 실행 명령은 해당 버전에 고정되므로 Skill과 같은 버전을 사용합니다. 같은 버전·옵션으로 다시 실행하면 변경 없이 성공합니다. 기존 설치에서는 생략한 실행 옵션(`--local`, `--mode`, `--url`, `--env-file`)을 설치 기록에서 유지합니다. `--local` 설치는 새 소스를 받은 뒤 `npm ci`, `npm run build`를 실행하고 같은 `setup --local` 명령을 다시 실행하세요.
@@ -50,7 +50,7 @@ npx -y @steercards/agent-tools@latest setup --client codex-app --cwd /absolute/p
 소스의 `--local` 설치를 npm 실행 방식으로 전환할 때는 `--npx`를 지정합니다. 이후 MCP 설정은 실행한 패키지 버전의 npx 명령을 사용합니다.
 
 ```sh
-npx -y @steercards/agent-tools@latest setup --client codex-app --cwd /absolute/path/project --npx
+npx -y -- @steercards/agent-tools@latest setup --client codex-app --cwd /absolute/path/project --npx
 ```
 
 전역 설치를 선택했다면 패키지를 업데이트한 뒤 `setup`을 다시 실행합니다.
@@ -60,7 +60,7 @@ npm install --global @steercards/agent-tools@latest
 steercards setup --client codex-app --cwd /absolute/path/project
 ```
 
-이하 `steercards` 명령은 전역 설치를 기준으로 합니다. 소스 빌드 사용자는 `node /absolute/path/agent-tools/dist/cli.js`로 대체하면 됩니다.
+이하 `steercards` 명령은 전역 설치를 기준으로 합니다. 소스 빌드 사용자는 `node -- /absolute/path/agent-tools/dist/cli.js`로 대체하면 됩니다.
 
 ## 환경 설정
 
@@ -73,6 +73,15 @@ steercards setup --client codex-app --cwd /absolute/path/project
 | `--url URL` | 이번 실행의 MCP URL을 지정합니다. 환경 변수보다 우선합니다. |
 
 이미 설정된 프로세스 환경 변수가 `.env`보다 우선합니다. 기본 `.env`는 지정한 디렉터리에서만 찾으며 상위 디렉터리를 탐색하지 않습니다. dotenv 값에 셸 명령이나 `${VARIABLE}` 확장을 수행하지 않습니다. 원격 URL은 HTTPS를 사용하며 로컬 개발용 loopback 주소만 HTTP를 허용합니다. URL의 인증 정보·쿼리·fragment는 허용하지 않습니다.
+
+프로젝트 밖에서도 상대 파일을 선택할 수 있습니다.
+
+```sh
+steercards doctor --cwd /absolute/path/project --env-file alternate.env
+npx -y -- @steercards/agent-tools@latest doctor --cwd /absolute/path/project --env-file alternate.env
+```
+
+`npx`에서는 패키지 이름 앞의 `--`를 유지하세요. Node 22 일부 버전은 프로그램 뒤의 `--env-file`도 시작 전에 검사하므로 이 경계가 필요합니다. 직접 Node로 실행할 때도 위 예시처럼 스크립트 경로 앞에 `--`를 넣습니다. 설치된 `steercards`와 새로 생성한 MCP 설정은 이 경계를 포함합니다. 기존 MCP 설정은 업데이트 후 `setup`을 다시 실행해 갱신하세요. Windows에서는 Node 22·24에 포함된 npm의 CMD·PowerShell shim을 사용합니다.
 
 GUI 앱은 터미널과 다른 디렉터리·환경에서 시작될 수 있습니다. 설정을 생성할 때 `--cwd`에 실제 프로젝트의 절대 경로를 지정하세요. 여러 프로젝트를 사용하면 서버 이름과 `--cwd`를 프로젝트별로 구분하세요. 키는 MCP 설정에 복사하지 않고 해당 프로젝트의 `.env`에 둡니다.
 
@@ -180,11 +189,11 @@ Claude Code, Codex 앱·CLI, Cursor, Claude Desktop 각각의 네이티브 UI �
 npm ci
 npm run check
 npm test
-npm run build
+npm run test:package
 npm pack --dry-run
 ```
 
-CI는 Linux·macOS·Windows의 Node 22·24에서 같은 검사를 실행합니다. 테스트는 로컬 fixture를 사용하며 실제 Agent Key가 필요하지 않습니다. 기여 방법은 [CONTRIBUTING.md](CONTRIBUTING.md), 보안 보고는 [SECURITY.md](SECURITY.md)를 참고하세요.
+CI는 Linux·macOS·Windows의 Node 22·24에서 같은 검사를 실행합니다. `test:package`는 빌드한 tarball을 별도 프로젝트에 설치하고 실제 bin·npx 및 생성된 MCP 명령을 실행합니다. Windows에서는 CMD와 PowerShell shim도 검사합니다. 의존성은 lockfile과 `npm ci`의 캐시를 재사용하며 실제 Agent Key가 필요하지 않습니다. 기여 방법은 [CONTRIBUTING.md](CONTRIBUTING.md), 보안 보고는 [SECURITY.md](SECURITY.md)를 참고하세요.
 
 공개 소스는 [velody-ai/steercards-agent-tools](https://github.com/velody-ai/steercards-agent-tools)에서 관리합니다. 안정 버전 GitHub Release를 게시하면 `publish.yml`이 태그·패키지 버전과 main 포함 여부를 확인하고 검사를 다시 실행한 뒤 npm에 게시합니다. 인증은 GitHub OIDC trusted publishing을 사용하며 공개 패키지에 provenance를 연결합니다.
 

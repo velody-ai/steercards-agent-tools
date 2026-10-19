@@ -26,7 +26,8 @@ test('every client config pins project and mode without reading dotenv', () => {
     if (!client.startsWith('codex')) {
       const server = JSON.parse(config).mcpServers.steercards;
       assert.equal(server.command, process.execPath);
-      assert.ok(server.args[0].endsWith('cli.js'));
+      assert.equal(server.args[0], '--');
+      assert.ok(server.args[1].endsWith('cli.js'));
       if (client === 'cursor') assert.equal(server.type, 'stdio');
     }
   }
