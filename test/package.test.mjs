@@ -73,6 +73,8 @@ test('packed npm launchers preserve project env-file semantics', { timeout: 2400
   const bin = join(consumer, 'node_modules', '.bin', process.platform === 'win32' ? 'steercards.cmd' : 'steercards');
   const doctor = ['doctor', '--cwd', project];
 
+  assert.equal((await run(bin, ['--version'], { cwd: consumer })).stdout.trim(), manifest.version);
+
   await t.test('installed bin reads default, relative, equals and absolute paths outside process cwd', async () => {
     assert.equal(json(await run(bin, doctor, { cwd: consumer })).url, 'https://default.example/api/mcp');
     for (const args of [
@@ -131,6 +133,7 @@ test('packed npm launchers preserve project env-file semantics', { timeout: 2400
       transport.stderr?.on('data', chunk => { stderr += chunk; });
       try {
         await client.connect(transport, { timeout: 15000 });
+        assert.deepEqual(client.getServerVersion(), { name: manifest.name, version: manifest.version });
         assert.equal((await client.listTools()).tools.length, 4);
         const guide = await client.callTool({ name: 'steercards_get_guide', arguments: {} });
         assert.equal(guide.isError, undefined);
@@ -165,7 +168,10 @@ test('packed npm launchers preserve project env-file semantics', { timeout: 2400
       const rpc = JSON.parse(body);
       if (rpc.id === undefined) { res.writeHead(202); res.end(); return; }
       let result;
-      if (rpc.method === 'initialize') result = { protocolVersion: '2025-11-25', capabilities: { tools: {} }, serverInfo: { name: 'fixture', version: '1' } };
+      if (rpc.method === 'initialize') {
+        assert.deepEqual(rpc.params.clientInfo, { name: manifest.name, version: manifest.version });
+        result = { protocolVersion: '2025-11-25', capabilities: { tools: {} }, serverInfo: { name: 'fixture', version: '1' } };
+      }
       else if (rpc.method === 'tools/list') result = { tools: [{ name: 'list_workspaces', inputSchema: { type: 'object' } }] };
       else { calls++; result = { content: [{ type: 'text', text: '{"ok":true}' }], structuredContent: { ok: true } }; }
       res.end(JSON.stringify({ jsonrpc: '2.0', id: rpc.id, result }));
@@ -206,6 +212,44 @@ test('packed npm launchers preserve project env-file semantics', { timeout: 2400
         assert.equal(exchanges, 2);
       }
       assert.ok(calls >= 2);
+    } finally { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
+  });
+
+  await t.test('real npx failure recovery preserves reused keys and hides server secrets', async () => {
+    const code = `sc_install_${'C'.repeat(43)}`;
+    const token = `sc_agent_${'T'.repeat(43)}`;
+    const npx = process.platform === 'win32' ? join(dirname(process.execPath), 'npx.cmd') : 'npx';
+    let requests = 0;
+    const server = createServer(async (req, res) => {
+      let body = '';
+      for await (const chunk of req) body += chunk;
+      assert.equal(req.url, '/api/agent-setup/exchange');
+      assert.equal(JSON.parse(body).code, code);
+      requests++;
+      res.writeHead(409, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: { code: 'AGENT_INSTALL_KEY_TOKEN_MISMATCH', message: `untrusted-server-message ${token} ${code}` } }));
+    });
+    server.listen(0, '127.0.0.1'); await once(server, 'listening');
+    try {
+      const failedProject = join(temp, 'npx recovery 한글 project');
+      await mkdir(failedProject);
+      const original = '# preserved\r\nOTHER=value\r\n';
+      await writeFile(join(failedProject, '.env'), original);
+      const result = await run(npx, ['--offline', '--', 'steercards', 'setup', '--client', 'codex', '--cwd', failedProject, '--env-file', '.env', '--url', `http://127.0.0.1:${server.address().port}/api/mcp`, '--setup-code-stdin'], { cwd: consumer, input: code + '\n' });
+      assert.equal(result.status, 1);
+      const report = JSON.parse(result.stdout);
+      assert.equal(report.credentials.status, 'not-saved');
+      assert.match(report.error, /selected Agent Key could not be verified/);
+      const steps = report.nextSteps.join(' ');
+      assert.match(steps, /First check whether the project \.env contains the Agent Key/);
+      assert.match(steps, /Preserve reused keys and create a new code for the same usable key/);
+      assert.match(steps, /Only revoke a newly issued key if you explicitly confirm it is unused/);
+      assert.equal(requests, 1);
+      assert.ok(!result.stdout.includes(token) && !result.stderr.includes(token));
+      assert.ok(!result.stdout.includes(code) && !result.stderr.includes(code));
+      assert.doesNotMatch(result.stdout + result.stderr, /untrusted-server-message/);
+      assert.equal(await readFile(join(failedProject, '.env'), 'utf8'), original);
+      await assert.rejects(readFile(join(failedProject, '.codex', 'config.toml')), { code: 'ENOENT' });
     } finally { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
   });
 
