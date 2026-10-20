@@ -30,12 +30,18 @@ const errors: Record<string, string> = {
   AGENT_INSTALL_CODE_NOT_FOUND: 'Installation code was not found. Create a new code in Steercards.',
   AGENT_INSTALL_CODE_EXPIRED: 'Installation code expired. Create a new code in Steercards.',
   AGENT_INSTALL_CODE_REVOKED: 'Installation code was revoked. Create a new code in Steercards.',
-  AGENT_INSTALL_CODE_CONSUMED: 'Installation code was already used. Check the issued Agent Key in Steercards before creating a new code.',
+  AGENT_INSTALL_CODE_CONSUMED: 'Installation code was already used. Check the project .env and the selected Agent Key in Steercards. Do not redeem this code again.',
   AGENT_INSTALL_CODE_PROFILE_INVALID: 'The selected profiles are no longer available. Create a new installation code.',
   AGENT_INSTALL_CODE_OWNER_INVALID: 'The installation owner is no longer available. Sign in to Steercards and create a new code.',
+  AGENT_INSTALL_KEY_NOT_FOUND: 'The selected Agent Key is no longer available. Check the code and key selection in Steercards before creating a new code.',
+  AGENT_INSTALL_KEY_REVOKED: 'The selected Agent Key was revoked. Check its status in Steercards and select a usable key for a new code.',
+  AGENT_INSTALL_KEY_EXPIRED: 'The selected Agent Key expired. Check its status in Steercards and select a usable key for a new code.',
+  AGENT_INSTALL_KEY_ACCESS_CHANGED: 'The selected Agent Key access changed. Review its workspace and profiles in Steercards before creating a new code.',
+  AGENT_INSTALL_KEY_TOKEN_MISMATCH: 'The selected Agent Key could not be verified. Preserve existing keys and check the code and selected key in Steercards before creating a new code.',
+  AGENT_INSTALL_KEY_CAPSULE_INVALID: 'The installation code could not restore the selected Agent Key. Preserve existing keys and create a fresh code for the same usable key in Steercards.',
   RATE_LIMITED: 'Too many installation attempts. Wait before creating another request.',
 };
-const recovery = 'The code may have been consumed. Create a new code and remove any unused issued Agent Key in Steercards. Never paste the Agent Key into chat.';
+const recovery = 'The code may have been consumed. Do not replay it. First check whether the project .env contains the Agent Key; preserve any saved key and rerun setup without a code, then doctor --connect. Otherwise, check the code status and selected key in Steercards. Preserve reused keys and create a new code for the same usable key. Only revoke a newly issued key if you explicitly confirm it is unused. Never paste the Agent Key into chat.';
 
 async function boundedJson(response: Response): Promise<unknown> {
   if (!response.headers.get('content-type')?.toLowerCase().includes('application/json')) { await response.body?.cancel(); throw new Error('Installation service returned an invalid response.'); }
@@ -125,7 +131,7 @@ export async function setupWithCode(options: CodeSetupOptions, dependencies: Cod
         token = claimed.token;
         report.receipt = claimed.receipt;
         try { await credentials.save(token); }
-        catch { throw new Error(`The issued Agent Key could not be saved safely. ${recovery}`); }
+        catch { throw new Error(`The Agent Key could not be saved safely. ${recovery}`); }
         report.credentials.status = 'saved';
       },
     });

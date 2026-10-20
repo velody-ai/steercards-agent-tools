@@ -18,6 +18,16 @@ async function fixture(t: TestContext) {
   t.after(() => rm(cwd, { recursive: true, force: true }));
   return cwd;
 }
+function assertPreservingRecovery(report: Awaited<ReturnType<typeof setupWithCode>>) {
+  const steps = report.nextSteps.join(' ');
+  assert.match(steps, /First check whether the project \.env contains the Agent Key/);
+  assert.match(steps, /preserve any saved key and rerun setup without a code/);
+  assert.match(steps, /check the code status and selected key in Steercards/);
+  assert.match(steps, /Preserve reused keys and create a new code for the same usable key/);
+  assert.match(steps, /Only revoke a newly issued key if you explicitly confirm it is unused/);
+  assert.match(steps, /Do not replay it/);
+  assert.doesNotMatch(JSON.stringify(report), /remove any unused issued Agent Key/);
+}
 
 test('one prompt exchanges once, writes only env credentials, installs MCP and skill, and keeps key on rerun', async t => {
   const cwd = await fixture(t);
@@ -97,7 +107,7 @@ test('saved key survives later config write failure and plain setup recovers wit
   assert.equal(requests, 1);
 });
 
-test('env write conflict after exchange retains external edit and gives safe key cleanup receipt', async t => {
+test('env write conflict after exchange retains external edit and gives key-preserving recovery', async t => {
   const cwd = await fixture(t);
   const report = await setupWithCode({ client: 'codex', cwd, code }, {
     fetch: async () => { await writeFile(join(cwd, '.env'), 'OTHER=external\n'); return response(); }, doctor,
@@ -106,6 +116,7 @@ test('env write conflict after exchange retains external edit and gives safe key
   assert.equal(report.credentials.status, 'not-saved');
   assert.equal(report.receipt?.keyId, receipt.key.id);
   assert.match(report.error!, /could not be saved/);
+  assertPreservingRecovery(report);
   assert.ok(!JSON.stringify(report).includes(token));
   assert.equal(await readFile(join(cwd, '.env'), 'utf8'), 'OTHER=external\n');
 });
@@ -125,9 +136,81 @@ test('remote failures are bounded, never expose response prose or credentials, a
     const report = await setupWithCode({ client: 'cursor', cwd, code }, { fetch: async () => { requests++; return fetcher(); }, doctor });
     assert.equal(report.ok, false);
     assert.equal(requests, 1);
+    assertPreservingRecovery(report);
     assert.ok(!JSON.stringify(report).includes(token));
     assert.ok(!JSON.stringify(report).includes(code));
     await assert.rejects(readFile(join(cwd, '.env')), { code: 'ENOENT' });
+  }
+});
+
+test('existing-key errors use safe static messages and preserve unrelated env data', async t => {
+  for (const [errorCode, expected] of [
+    ['AGENT_INSTALL_KEY_NOT_FOUND', /selected Agent Key is no longer available/],
+    ['AGENT_INSTALL_KEY_REVOKED', /selected Agent Key was revoked/],
+    ['AGENT_INSTALL_KEY_EXPIRED', /selected Agent Key expired/],
+    ['AGENT_INSTALL_KEY_ACCESS_CHANGED', /selected Agent Key access changed/],
+    ['AGENT_INSTALL_KEY_TOKEN_MISMATCH', /selected Agent Key could not be verified/],
+    ['AGENT_INSTALL_KEY_CAPSULE_INVALID', /could not restore the selected Agent Key/],
+  ] as const) {
+    const cwd = await fixture(t);
+    const original = '# keep comments\r\nOTHER=value\r\n';
+    await writeFile(join(cwd, '.env'), original);
+    let requests = 0;
+    const report = await setupWithCode({ client: 'codex', cwd, code }, {
+      fetch: async () => {
+        requests++;
+        return Response.json({ error: { code: errorCode, message: `untrusted-server-message ${token} ${code}` } }, { status: 409 });
+      }, doctor,
+    });
+    assert.equal(report.ok, false);
+    assert.equal(report.credentials.status, 'not-saved');
+    assert.equal(requests, 1);
+    assert.match(report.error!, expected);
+    assertPreservingRecovery(report);
+    assert.doesNotMatch(JSON.stringify(report), /untrusted-server-message/);
+    assert.ok(!JSON.stringify(report).includes(token));
+    assert.ok(!JSON.stringify(report).includes(code));
+    assert.equal(await readFile(join(cwd, '.env'), 'utf8'), original);
+  }
+});
+
+test('kept key survives config failure without exchanging or changing env bytes', async t => {
+  const cwd = await fixture(t);
+  const original = `# shared existing key\r\nSTEERCARDS_AGENT_KEY=${token}\r\nOTHER=value\r\n`;
+  await writeFile(join(cwd, '.env'), original);
+  let requests = 0;
+  const report = await setupWithCode({ client: 'cursor', cwd, code }, {
+    fetch: async () => { requests++; return response(); }, doctor,
+    setup: { beforeWrite: async (_path, index) => { if (index === 1) throw new Error('fixture failure'); } },
+  });
+  assert.equal(report.ok, false);
+  assert.equal(report.credentials.status, 'kept');
+  assert.equal(requests, 0);
+  assert.match(report.nextSteps.join(' '), /\.env was preserved.*setup without an installation code/);
+  assert.equal(await readFile(join(cwd, '.env'), 'utf8'), original);
+  await setup({ client: 'cursor', cwd, envFile: '.env' });
+  assert.equal(requests, 0);
+  assert.equal(await readFile(join(cwd, '.env'), 'utf8'), original);
+});
+
+test('failed doctor preserves saved and kept keys and never asks to exchange again', async t => {
+  for (const kept of [false, true]) {
+    const cwd = await fixture(t);
+    const original = `STEERCARDS_AGENT_KEY=${token}\n`;
+    if (kept) await writeFile(join(cwd, '.env'), original);
+    let requests = 0;
+    const report = await setupWithCode({ client: 'cursor', cwd, code }, {
+      fetch: async () => { requests++; return response(); },
+      doctor: async () => { throw new Error(`untrusted-doctor-message ${token} ${code}`); },
+    });
+    assert.equal(report.ok, false);
+    assert.equal(report.credentials.status, kept ? 'kept' : 'saved');
+    assert.equal(report.doctor.connected, false);
+    assert.equal(requests, kept ? 0 : 1);
+    assert.match(report.nextSteps.join(' '), /Credentials and setup were preserved.*Do not redeem the code again/);
+    assert.equal(await readFile(join(cwd, '.env'), 'utf8'), original);
+    assert.ok(!JSON.stringify(report).includes(token));
+    assert.ok(!JSON.stringify(report).includes(code));
   }
 });
 
