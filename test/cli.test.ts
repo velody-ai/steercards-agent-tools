@@ -26,6 +26,17 @@ test('CLI help, version and config do not require credentials', async () => {
   assert.equal(JSON.parse(config.stdout).mcpServers.steercards.command, process.execPath);
 });
 
+test('CLI rejects an unsupported Node version before setup can write files', async t => {
+  const cwd = await realpath(await mkdtemp(join(tmpdir(), 'steercards-old-node-')));
+  t.after(() => rm(cwd, { recursive: true, force: true }));
+  const preload = `data:text/javascript,${encodeURIComponent("Object.defineProperty(process.versions, 'node', { value: '20.20.0' });")}`;
+  const result = spawnSync(process.execPath, ['--import', preload, '--import', 'tsx', 'src/cli.ts', 'setup', '--client', 'cursor', '--cwd', cwd], { cwd: root, encoding: 'utf8' });
+  assert.equal(result.status, 1);
+  assert.match(JSON.parse(result.stderr).error, /require Node.js 22 or newer/);
+  assert.equal(result.stdout, '');
+  assert.deepEqual(await readdir(cwd), []);
+});
+
 test('CLI dotenv doctor never outputs credential or unrelated environment values', async t => {
   const cwd = await realpath(await mkdtemp(join(tmpdir(), 'steercards-cli-')));
   t.after(() => rm(cwd, { recursive: true, force: true }));
@@ -92,5 +103,42 @@ test('setup preview and noninteractive selection failures never write files', as
     const result = cli(args);
     assert.equal(result.status, args.includes('--dry-run') ? 0 : 1, result.stderr);
     assert.deepEqual(await readdir(cwd), []);
+  }
+});
+
+test('code setup keeps final JSON on stdout and safe progress on stderr for pending and failures', async t => {
+  const cwd = await realpath(await mkdtemp(join(tmpdir(), 'steercards-confirm-cli-')));
+  t.after(() => rm(cwd, { recursive: true, force: true }));
+  const code = `sc_install_${'C'.repeat(43)}`;
+  const token = `sc_agent_${'T'.repeat(43)}`;
+  await writeFile(join(cwd, '.env'), `STEERCARDS_AGENT_KEY=${token}\n`);
+  const args = ['setup', '--client', 'codex', '--cwd', cwd, '--setup-code-stdin', '--confirm-existing-key'];
+  const pending = cli(args, code + '\n');
+  assert.equal(pending.status, 0, pending.stderr);
+  assert.equal(JSON.parse(pending.stdout).status, 'confirmation-required');
+  assert.equal(JSON.parse(pending.stdout).ok, false);
+  assert.equal(JSON.parse(pending.stdout).error, undefined);
+  assert.deepEqual(await readdir(cwd), ['.env']);
+  const events = pending.stderr.trim().split('\n').map(line => JSON.parse(line));
+  assert.deepEqual(events.map(event => [event.stage, event.status]), [['preflight', 'started'], ['preflight', 'completed']]);
+  assert.ok(events.every(event => event.type === 'steercards-setup-progress' && typeof event.elapsedMs === 'number'));
+  const preview = cli([...args, '--keep-agent-key', '--dry-run'], code + '\n');
+  assert.equal(preview.status, 0, preview.stderr);
+  assert.equal(JSON.parse(preview.stdout).status, 'dry-run');
+  await rm(join(cwd, '.env'));
+  const missing = cli([...args, '--keep-agent-key'], code + '\n');
+  assert.equal(missing.status, 1);
+  assert.equal(JSON.parse(missing.stdout).status, 'failed');
+  assert.equal(JSON.parse(missing.stderr.trim().split('\n').at(-1)!).status, 'failed');
+  for (const result of [pending, preview, missing]) {
+    assert.ok(!result.stdout.includes(token) && !result.stderr.includes(token));
+    assert.ok(!result.stdout.includes(code) && !result.stderr.includes(code));
+  }
+  const conflicting = cli([...args, '--keep-agent-key', '--replace-agent-key'], code + '\n');
+  assert.equal(conflicting.status, 1);
+  assert.match(conflicting.stderr, /Choose only one/);
+  for (const flag of ['--confirm-existing-key', '--keep-agent-key']) {
+    assert.equal(cli(['setup', '--client', 'cursor', flag]).status, 1);
+    assert.equal(cli(['doctor', flag]).status, 1);
   }
 });

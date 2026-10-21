@@ -38,3 +38,13 @@ The 0.1.4 candidate was verified on macOS with Node 24.19.0. Type checking, all 
 - Package contents include compiled code, Skill and documentation; no `.env`, test fixtures, dependencies or Git metadata are packed. No production key or installation code was used.
 
 Remote OS/Node CI, npm publication/provenance and independent public-registry installation QA remain separate checks. These fixture results do not establish native client UI or production exchange behavior.
+
+## Confirmation and progress — 0.1.5 candidate (SC-587)
+
+Verified locally on macOS / Node 22.19.0: strict type checking and build, all 75 source tests, and the fresh packed CLI suite passed (7 passed, 1 Windows-only test skipped locally). The CI matrix runs the same source and packed checks on Linux, macOS and Windows with Node 22 and 24.
+
+- Existing-key discovery returns `confirmation-required` with `ok:false` and exit 0 before creating locks, directories, credentials, MCP config or skills. Tests cover a conflicting config, unchanged CRLF env bytes, no exchange/install/doctor, and safe question/choices. A key appearing after discovery is rechecked under the existing locks.
+- Keep/replace choices are mutually exclusive. Keep cannot issue credentials after a key disappears or becomes invalid; duplicate, malformed or empty assignments fail safely in the confirmation flow. Option-free existing-key behavior remains compatible.
+- Actual packed bin execution checks no-key install, confirmation, explicit keep/replace, removed-key failure, stderr progress JSONL, one final stdout JSON, stage/total timings and no leaked credentials. The source suite verifies dry-run, pending/error timings, installation rollback and saved/kept-key preservation. CLI rejects unsupported Node versions with a clear error before setup writes.
+- The connection deadline both races completion and aborts HTTP. Stalled response headers and stalled JSON error bodies return within the test deadline and disconnect the actual socket; the env key survives. Success performs one read-only connection check, with no duplicate doctor.
+- Packed contents were inspected: compiled code, Skill and public documentation only. No production key/code, native client UI or public registry was used. Remote matrix CI, release provenance and independent public-registry QA remain separate evidence.

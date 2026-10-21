@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { mkdtemp, mkdir, readFile, realpath, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, readdir, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { delimiter, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -181,7 +181,7 @@ test('packed npm launchers preserve project env-file semantics', { timeout: 2400
     try {
       const newProject = join(temp, 'one prompt project');
       await mkdir(newProject);
-      const args = ['setup', '--client', 'cursor', '--cwd', '.', '--env-file', '.env', '--url', url, '--setup-code-stdin'];
+      const args = ['setup', '--client', 'cursor', '--cwd', '.', '--env-file', '.env', '--url', url, '--setup-code-stdin', '--confirm-existing-key'];
       const preview = json(await run(bin, [...args, '--dry-run'], { cwd: newProject, input: code + '\r\n' }));
       assert.equal(preview.credentials.status, 'dry-run');
       assert.equal(exchanges, 0);
@@ -195,11 +195,45 @@ test('packed npm launchers preserve project env-file semantics', { timeout: 2400
       assert.equal(report.ok, true, report.error);
       assert.equal(report.credentials.status, 'saved');
       assert.equal(report.doctor.keySource, 'env-file');
+      assert.equal(report.status, 'completed');
+      assert.deepEqual(Object.values(report.timings.stages).map(stage => stage.status), ['completed', 'completed', 'completed', 'completed']);
+      const events = first.stderr.trim().split('\n').map(line => JSON.parse(line));
+      assert.deepEqual(events.filter(event => event.status === 'started').map(event => event.stage), ['preflight', 'credentials', 'install', 'connection']);
+      assert.ok(events.every(event => event.type === 'steercards-setup-progress' && Number.isFinite(event.elapsedMs)));
       assert.ok(!first.stdout.includes(token) && !first.stderr.includes(token));
       assert.ok(!first.stdout.includes(code) && !first.stderr.includes(code));
       assert.equal(await readFile(join(newProject, '.env'), 'utf8'), `STEERCARDS_AGENT_KEY=${token}\n`);
-      assert.equal(json(await run(bin, args, { cwd: newProject, input: code + '\n' })).credentials.status, 'kept');
+      const pendingResult = await run(bin, args, { cwd: newProject, input: code + '\n' });
+      const pending = json(pendingResult);
+      assert.equal(pending.ok, false);
+      assert.equal(pending.status, 'confirmation-required');
+      assert.equal(pending.error, undefined);
+      assert.equal(pending.setup, null);
+      assert.equal(pending.confirmation.question, '.env에 Key가 있어요. 기존 키를 사용하시겠습니까?');
+      assert.deepEqual(pending.confirmation.choices.map(choice => choice.flag), ['--keep-agent-key', '--replace-agent-key']);
+      assert.equal(pending.timings.stages.install.status, 'pending');
+      const kept = json(await run(bin, [...args, '--keep-agent-key'], { cwd: newProject, input: code + '\n' }));
+      assert.equal(kept.credentials.status, 'kept');
+      assert.equal(kept.timings.stages.credentials.status, 'skipped');
       assert.equal(exchanges, 1);
+      const confirmationProject = join(temp, 'confirmation only');
+      await mkdir(confirmationProject);
+      await writeFile(join(confirmationProject, '.env'), `STEERCARDS_AGENT_KEY=${token}\n`);
+      assert.equal(json(await run(bin, args, { cwd: confirmationProject, input: code + '\n' })).status, 'confirmation-required');
+      assert.deepEqual(await readdir(confirmationProject), ['.env']);
+      await rm(join(confirmationProject, '.env'));
+      const missing = await run(bin, [...args, '--keep-agent-key'], { cwd: confirmationProject, input: code + '\n' });
+      assert.equal(missing.status, 1);
+      assert.equal(JSON.parse(missing.stdout).status, 'failed');
+      assert.equal(exchanges, 1);
+      assert.deepEqual(await readdir(confirmationProject), []);
+      const replaced = json(await run(bin, [...args, '--replace-agent-key'], { cwd: newProject, input: code + '\n' }));
+      assert.equal(replaced.credentials.status, 'saved');
+      assert.equal(exchanges, 2);
+      for (const result of [pendingResult, missing]) {
+        assert.ok(!result.stdout.includes(token) && !result.stderr.includes(token));
+        assert.ok(!result.stdout.includes(code) && !result.stderr.includes(code));
+      }
       if (process.platform === 'win32') {
         const psProject = join(consumer, 'powershell bootstrap');
         await mkdir(psProject);
@@ -209,7 +243,7 @@ test('packed npm launchers preserve project env-file semantics', { timeout: 2400
         const result = await run('powershell.exe', ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', command], { cwd: psProject });
         assert.equal(json(result).ok, true, result.stderr);
         assert.ok(!result.stdout.includes(token));
-        assert.equal(exchanges, 2);
+        assert.equal(exchanges, 3);
       }
       assert.ok(calls >= 2);
     } finally { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }

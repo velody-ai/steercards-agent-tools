@@ -45,7 +45,7 @@ export class Runtime {
   private listing?: Promise<Tool[]>;
   private closed = false;
 
-  constructor(config: Config) {
+  constructor(config: Config, private readonly options: { signal?: AbortSignal } = {}) {
     this.config = { ...config, url: validateMcpUrl(config.url) };
     if (!config.agentKey || /\s/.test(config.agentKey)) throw new Error('STEERCARDS_AGENT_KEY is invalid.');
   }
@@ -72,7 +72,8 @@ export class Runtime {
             // redirects are refused so bearer credentials cannot move to another route.
             const target = input instanceof Request ? input.url : input.toString();
             if (target !== endpoint) throw new Error('Refused a request outside the configured MCP endpoint.');
-            const response = await fetch(input, { ...init, redirect: 'error' });
+            const signals = [init?.signal, this.options.signal].filter((signal): signal is AbortSignal => Boolean(signal));
+            const response = await fetch(input, { ...init, redirect: 'error', ...(signals.length ? { signal: AbortSignal.any(signals) } : {}) });
             if (!response.ok && response.status !== 405) {
               const code = await httpErrorCode(response, this.config.agentKey);
               const retry = response.headers.get('retry-after');

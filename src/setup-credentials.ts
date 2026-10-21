@@ -16,6 +16,8 @@ export interface CredentialOptions {
   envFile?: string;
   savedEnvFile?: string;
   replaceAgentKey?: boolean;
+  keepAgentKey?: boolean;
+  rejectEmptyAgentKey?: boolean;
   dryRun?: boolean;
 }
 
@@ -146,8 +148,7 @@ async function atomicWrite(path: string, bytes: Buffer, mode = 0o600): Promise<v
   } finally { await rm(stage, { force: true }); }
 }
 
-/** Preflight local credentials while holding a project lock shared by every client. */
-export async function prepareProjectCredentials(options: CredentialOptions = {}): Promise<ProjectCredentials> {
+async function projectEnvironment(options: CredentialOptions): Promise<{ cwd: string; envFile: string }> {
   let cwd: string;
   try {
     cwd = await realpath(resolve(options.cwd ?? process.cwd()));
@@ -156,6 +157,21 @@ export async function prepareProjectCredentials(options: CredentialOptions = {})
   const envFile = join(cwd, '.env');
   if (options.envFile !== undefined && resolve(cwd, options.envFile) !== envFile) throw new Error('Automatic credentials only support the project .env. Use --env-file .env.');
   if (options.envFile === undefined && options.savedEnvFile !== undefined && resolve(cwd, options.savedEnvFile) !== envFile) throw new Error('This installation uses another environment file. Explicitly select --env-file .env to switch before redeeming a code.');
+  return { cwd, envFile };
+}
+
+/** Read-only discovery before setup creates locks, directories, probes or configuration. */
+export async function inspectProjectAgentKey(options: CredentialOptions = {}): Promise<{ cwd: string; envFile: string; hasAgentKey: boolean }> {
+  const { cwd, envFile } = await projectEnvironment(options);
+  const assignment = keyValue((await snapshot(envFile))?.toString('utf8') ?? '');
+  if (assignment && !assignment.value) throw new Error('The project .env contains an empty Agent Key assignment. Review it before setup; no code was exchanged.');
+  return { cwd, envFile, hasAgentKey: Boolean(assignment?.value) };
+}
+
+/** Preflight local credentials while holding a project lock shared by every client. */
+export async function prepareProjectCredentials(options: CredentialOptions = {}): Promise<ProjectCredentials> {
+  if (options.keepAgentKey && options.replaceAgentKey) throw new Error('Choose only one of --keep-agent-key or --replace-agent-key.');
+  const { cwd, envFile } = await projectEnvironment(options);
   const ignoreFile = join(cwd, '.gitignore');
   const lockPath = join(cwd, '.steercards', 'setup', 'credentials.lock');
   const created: string[] = [];
@@ -194,7 +210,11 @@ export async function prepareProjectCredentials(options: CredentialOptions = {})
     }
     let envBefore = await snapshot(envFile);
     let ignoreBefore = await snapshot(ignoreFile);
-    const existing = keyValue(envBefore?.toString('utf8') ?? '')?.value;
+    const assignment = keyValue(envBefore?.toString('utf8') ?? '');
+    const existing = assignment?.value;
+    if (options.rejectEmptyAgentKey && assignment && !existing) throw new Error('The project .env contains an empty Agent Key assignment. Review it before setup; no code was exchanged.');
+    if (options.keepAgentKey && !existing) throw new Error('The project .env no longer contains an Agent Key. Review the file and choose again; no code was exchanged.');
+    if (options.keepAgentKey && !keyPattern.test(existing!)) throw new Error('The existing Agent Key has an invalid format. Review the project .env; no code was exchanged.');
     const needsExchange = !existing || options.replaceAgentKey === true;
     const ignoreAfter = Buffer.from(withIgnore(ignoreBefore?.toString('utf8') ?? ''));
     const ignoreMode = ignoreBefore ? (await lstat(ignoreFile)).mode & 0o777 : 0o644;
