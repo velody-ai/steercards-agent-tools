@@ -2,6 +2,13 @@
 
 공개 패키지는 [`@steercards/agent-tools`](https://www.npmjs.com/package/@steercards/agent-tools), 소스는 [`velody-ai/steercards-agent-tools`](https://github.com/velody-ai/steercards-agent-tools)에서 관리합니다. 일반 CI는 검증을 수행하고, 안정 버전의 GitHub Release를 게시하면 `.github/workflows/publish.yml`이 npm에 게시합니다. 태그 push나 main 병합만으로는 게시하지 않습니다.
 
+## 0.1.5 설치 흐름 변경 (SC-587)
+
+- `setup --setup-code-stdin --confirm-existing-key`는 기존 프로젝트 Key가 있으면 파일을 쓰거나 코드를 교환하지 않고 정상 대기 보고서(`status:"confirmation-required"`, `ok:false`, exit 0)를 반환합니다. 선택 후 `--keep-agent-key` 또는 `--replace-agent-key`를 추가합니다. 옵션 없는 공개 명령은 이전 동작을 유지합니다.
+- stderr의 안전한 JSONL 진행 이벤트와 stdout 최종 보고서의 단계별·전체 소요 시간을 제공합니다. 측정에는 설치기 이전의 npm 다운로드가 포함되지 않습니다.
+- 자동 연결 검사는 한 번 실행하며 15초 제한에서 HTTP 요청도 취소합니다. 키 보존·파일 충돌·코드 재시도 방지 규칙은 유지합니다.
+- 앱의 축약 프롬프트가 새 옵션을 사용하기 전에 npm 0.1.5 공개 설치 검증을 완료합니다. 병합·Release 게시·registry 출처 확인·공개 QA는 별도 단계입니다.
+
 ## 최초 설정
 
 1. npm의 `steercards` 조직과 패키지 쓰기 권한을 확인합니다. trusted publisher는 패키지가 레지스트리에 존재해야 설정할 수 있습니다. 최초 `0.1.0`은 검사한 tarball을 유지관리자의 npm 로그인·2FA로 일반 게시합니다.

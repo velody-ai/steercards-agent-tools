@@ -1,6 +1,6 @@
 # Steercards Agent Tools
 
-Steercards의 전체 MCP 도구를 CLI와 에이전트에서 사용할 수 있게 하는 독립형 Node.js 도구입니다. MIT 라이선스이며 Node.js 22 이상이 필요합니다.
+Steercards의 전체 MCP 도구를 CLI와 에이전트에서 사용할 수 있게 하는 독립형 Node.js 도구입니다. MIT 라이선스이며 Node.js 22 이상이 필요합니다. CLI도 지원 버전을 검사하며, 구버전이면 안내 오류와 함께 중단합니다.
 
 - 원격 서버의 도구 목록·설명·입력 스키마를 실행 시 조회합니다. 도구 목록을 패키지에 고정하지 않습니다.
 - 기본 `compact` 모드는 검색 → 스키마 확인 → 호출 흐름으로 초기 도구 노출을 줄입니다.
@@ -16,7 +16,7 @@ Steercards의 Agent 연결 화면에서 Key 설정을 선택하고 설치 프롬
 직접 실행하는 경우 아래 코드 자리를 앱에서 발급한 설치 코드로 바꿉니다. POSIX 셸 예시:
 
 ```sh
-npx -y -- @steercards/agent-tools@latest setup --client codex-app --cwd . --env-file .env --url https://steercards.com/api/mcp --setup-code-stdin <<'STEERCARDS_SETUP_CODE'
+npx -y -- @steercards/agent-tools@latest setup --client codex-app --cwd . --env-file .env --url https://steercards.com/api/mcp --setup-code-stdin --confirm-existing-key <<'STEERCARDS_SETUP_CODE'
 <일회용 설치 코드>
 STEERCARDS_SETUP_CODE
 ```
@@ -26,12 +26,16 @@ Windows PowerShell에서는 같은 코드를 here-string으로 전달합니다.
 ```powershell
 @'
 <일회용 설치 코드>
-'@ | npx -y -- @steercards/agent-tools@latest setup --client codex-app --cwd . --env-file .env --url https://steercards.com/api/mcp --setup-code-stdin
+'@ | npx -y -- @steercards/agent-tools@latest setup --client codex-app --cwd . --env-file .env --url https://steercards.com/api/mcp --setup-code-stdin --confirm-existing-key
 ```
 
 `--cwd .`는 실행한 현재 프로젝트를 뜻하며 생략해도 같습니다. `--client`는 선택한 클라이언트로 바꾸고, 다른 서버를 사용한다면 그 서버의 MCP URL을 명시하세요. 설치 코드와 발급된 키는 명령 인자·출력·설치 기록에 넣지 않습니다. 자동 연결 검사는 호출 프로세스의 다른 키보다 저장한 `.env`의 키를 사용합니다.
 
-기존 `.env`의 다른 값·주석·개행을 보존합니다. 이미 Agent Key가 있으면 그대로 사용하고 코드를 교환하지 않습니다. 교체하려면 같은 setup 명령에 `--replace-agent-key`를 명시하세요. 이전 키를 서버에서 자동 폐기하지는 않습니다. 자동 쓰기는 프로젝트 루트 `.env`만 지원합니다. 이전 설치가 다른 env 파일을 참조하면 교환 전에 중단하므로 `--env-file .env`로 전환을 명시합니다.
+`--confirm-existing-key`는 프로젝트 `.env`에 Key가 있으면 파일을 쓰거나 코드를 교환하기 전에 `status:"confirmation-required"`, `ok:false`와 질문·선택지를 반환합니다. 종료 코드 0인 정상 대기 상태이며 설치 성공을 뜻하지 않습니다. 에이전트는 “.env에 Key가 있어요. 기존 키를 사용하시겠습니까?”를 묻고 답변을 기다립니다. 유지하면 같은 명령에 `--keep-agent-key`, 설치 코드의 Key를 사용하면 `--replace-agent-key`를 하나만 추가해 다시 실행합니다. `--keep-agent-key`는 Key가 없어졌거나 파싱이 잘못되면 중단하며 새 Key를 자동 발급하지 않습니다. 확인 흐름에서는 빈 Key 할당도 중단합니다. `.env`에 Key 변수가 없으면 질문 없이 진행합니다. 선택하는 동안 코드가 만료되면 앱에서 새 설치 프롬프트를 받아야 합니다.
+
+기존 `.env`의 다른 값·주석·개행을 보존합니다. 확인 옵션을 생략한 이전 명령은 기존 동작대로 Key를 유지하고 코드를 교환하지 않습니다. 교체할 때에도 이전 키를 서버에서 자동 폐기하지 않습니다. 설치 코드는 앱에서 선택한 기존 Key를 재사용할 수도 있습니다. 자동 쓰기는 프로젝트 루트 `.env`만 지원합니다. 이전 설치가 다른 env 파일을 참조하면 교환 전에 중단하므로 `--env-file .env`로 전환을 명시합니다.
+
+설치기는 `preflight`(사전 검사), `credentials`(Key 교환·저장), `install`(MCP·Skill 설치), `connection`(연결 검사)의 시작·완료·실패를 stderr의 JSON Lines로 출력합니다. Key를 유지할 때 교환·저장 단계는 `skipped`입니다. stdout에는 최종 JSON 한 개만 출력하며, `timings.totalMs`와 `timings.stages`에 단계별 `status`·`durationMs`를 담습니다. 아직 시작하지 않은 단계는 `pending`입니다. 진행 이벤트는 `type:"steercards-setup-progress"`, `stage`, `status`, `elapsedMs`, 완료 시 `durationMs`만 포함하며 코드·키·HTTP 본문을 포함하지 않습니다. 시간은 **설치기 실행부터 보고서 반환까지**이며 앞선 npm/npx 패키지 다운로드 시간은 제외합니다. 자동 연결 검사는 한 번 수행하고 최대 15초 후 실제 HTTP 요청을 취소합니다. 성공한 뒤 별도로 `doctor --connect`를 반복할 필요는 없습니다.
 
 `.env`가 Git에 추적되거나 파일·설정·Skill 충돌, symlink, 잠금·쓰기 문제가 있으면 교환 전에 중단합니다. `.gitignore`의 기존 negation 뒤에 보호 규칙을 보완합니다. `--dry-run`은 코드를 소비하거나 파일을 쓰지 않습니다.
 

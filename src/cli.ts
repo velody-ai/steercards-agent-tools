@@ -13,7 +13,7 @@ import { setupWithCode } from './setup-with-code.js';
 const help = `Steercards agent tools ${packageInfo.version}
 
 steercards setup [--client CLIENT] [--local | --npx] [--dry-run]
-  [--setup-code-stdin] [--replace-agent-key]
+  [--setup-code-stdin] [--confirm-existing-key] [--keep-agent-key | --replace-agent-key]
 steercards serve [--mode compact|full]
 steercards tools [query] [--limit 10]
 steercards describe NAME
@@ -34,6 +34,10 @@ setup uses project scope (Desktop uses its user configuration and a project ZIP)
 --setup-code-stdin reads a one-use installation code, protects the project .env,
   installs MCP and the skill, then checks the connection. Existing keys are kept.
 --replace-agent-key explicitly replaces the project .env Agent Key.
+--confirm-existing-key returns confirmation-required before writing when a key exists.
+--keep-agent-key requires the existing project key and never exchanges a code.
+Code setup emits safe progress JSONL to stderr and one final JSON report to stdout.
+confirmation-required exits 0 with ok:false; wait for the user's key choice.
 config only prints a snippet and never edits host settings.
 --local uses this installation's absolute Node/CLI paths (works before npm release).
 Claude Desktop: upload the skill ZIP, use compact get_guide, or full guide resources.
@@ -76,6 +80,7 @@ async function installationCode(): Promise<string> {
 
 let secret = process.env.STEERCARDS_AGENT_KEY;
 async function main() {
+  if (Number(process.versions.node.split('.')[0]) < 22) throw new Error('Steercards agent tools require Node.js 22 or newer. Install a supported Node.js version, then rerun setup.');
   const { values, positionals } = parseArgs({ allowPositionals: true, strict: true, options: {
     cwd: { type: 'string' }, 'env-file': { type: 'string' }, url: { type: 'string' }, mode: { type: 'string' },
     json: { type: 'string' }, file: { type: 'string' }, stdin: { type: 'boolean' },
@@ -83,6 +88,7 @@ async function main() {
     limit: { type: 'string' }, connect: { type: 'boolean' }, local: { type: 'boolean' },
     'dry-run': { type: 'boolean' }, npx: { type: 'boolean' },
     'setup-code-stdin': { type: 'boolean' }, 'replace-agent-key': { type: 'boolean' },
+    'keep-agent-key': { type: 'boolean' }, 'confirm-existing-key': { type: 'boolean' },
     help: { type: 'boolean', short: 'h' }, version: { type: 'boolean', short: 'v' },
   } });
   if (values.version) { process.stdout.write(packageInfo.version + '\n'); return; }
@@ -96,7 +102,10 @@ async function main() {
       if (values[option] !== undefined) throw new Error(`--${option} is not supported by setup.`);
     }
     if (values.global) throw new Error('setup uses project scope; omit --global. Claude Desktop configuration is user-scoped.');
-    if (values['replace-agent-key'] && !values['setup-code-stdin']) throw new Error('--replace-agent-key requires --setup-code-stdin.');
+    for (const option of ['replace-agent-key', 'keep-agent-key', 'confirm-existing-key'] as const) {
+      if (values[option] && !values['setup-code-stdin']) throw new Error(`--${option} requires --setup-code-stdin.`);
+    }
+    if (values['keep-agent-key'] && values['replace-agent-key']) throw new Error('Choose only one of --keep-agent-key or --replace-agent-key.');
     if (values.local && values.npx) throw new Error('Choose only one of --local or --npx.');
     let client = values.client;
     if (!client) {
@@ -114,13 +123,16 @@ async function main() {
     if (values['setup-code-stdin']) {
       const code = await installationCode();
       secret = code;
-      const result = await setupWithCode({ ...setupOptions, code, replaceAgentKey: values['replace-agent-key'] });
+      const result = await setupWithCode({ ...setupOptions, code,
+        replaceAgentKey: values['replace-agent-key'], keepAgentKey: values['keep-agent-key'], confirmExistingKey: values['confirm-existing-key'],
+        onProgress: event => { process.stderr.write(JSON.stringify(event) + '\n'); },
+      });
       output(result);
-      if (!result.ok) process.exitCode = 1;
+      if (!result.ok && result.status !== 'confirmation-required') process.exitCode = 1;
     } else output(await setup(setupOptions));
     return;
   }
-  if (values['setup-code-stdin'] || values['replace-agent-key']) throw new Error('Installation code options are only supported by setup.');
+  if (values['setup-code-stdin'] || values['replace-agent-key'] || values['keep-agent-key'] || values['confirm-existing-key']) throw new Error('Installation code options are only supported by setup.');
   if (values['dry-run'] || values.npx) throw new Error('--dry-run and --npx are only supported by setup.');
   if (command === 'config') {
     if (!name) throw new Error('Choose a client. Use --help.');

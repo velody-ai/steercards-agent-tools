@@ -45,7 +45,7 @@ export class Runtime {
   private listing?: Promise<Tool[]>;
   private closed = false;
 
-  constructor(config: Config) {
+  constructor(config: Config, private readonly options: { signal?: AbortSignal } = {}) {
     this.config = { ...config, url: validateMcpUrl(config.url) };
     if (!config.agentKey || /\s/.test(config.agentKey)) throw new Error('STEERCARDS_AGENT_KEY is invalid.');
   }
@@ -72,7 +72,8 @@ export class Runtime {
             // redirects are refused so bearer credentials cannot move to another route.
             const target = input instanceof Request ? input.url : input.toString();
             if (target !== endpoint) throw new Error('Refused a request outside the configured MCP endpoint.');
-            const response = await fetch(input, { ...init, redirect: 'error' });
+            const signals = [init?.signal, input instanceof Request ? input.signal : undefined, this.options.signal].filter((signal): signal is AbortSignal => Boolean(signal));
+            const response = await fetch(input, { ...init, redirect: 'error', ...(signals.length ? { signal: AbortSignal.any(signals) } : {}) });
             if (!response.ok && response.status !== 405) {
               const code = await httpErrorCode(response, this.config.agentKey);
               const retry = response.headers.get('retry-after');
@@ -91,7 +92,9 @@ export class Runtime {
         });
         this.transport = transport;
         try {
-          await client.connect(transport);
+          // Cancel the SDK's result wait/timer too: HTTP 202 can complete fetch
+          // while initialize/tools requests are still waiting for a response.
+          await client.connect(transport, { signal: this.options.signal });
           if (this.closed) { await client.close(); throw new Error('Steercards runtime is closed.'); }
           this.client = client;
           return client;
@@ -119,7 +122,7 @@ export class Runtime {
           do {
             // Avoid the SDK convenience method's output-schema compilation: a
             // proxy must accept and pass through the server's JSON Schemas.
-            const page = await client.request({ method: 'tools/list', params: cursor ? { cursor } : {} }, ListToolsResultSchema);
+            const page = await client.request({ method: 'tools/list', params: cursor ? { cursor } : {} }, ListToolsResultSchema, { signal: this.options.signal });
             for (const tool of page.tools) {
               if (names.has(tool.name)) throw new Error('The upstream tool catalog contains duplicate tool names.');
               names.add(tool.name);
@@ -178,7 +181,7 @@ export class Runtime {
       // outputSchema intended for successful results. No mutation retry is made.
       return await (await this.connection()).request({
         method: 'tools/call', params: { name, arguments: args },
-      }, CallToolResultSchema);
+      }, CallToolResultSchema, { signal: this.options.signal });
     } catch (error) { throw this.safeError(error); }
   }
 

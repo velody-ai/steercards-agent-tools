@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict';
 import { once } from 'node:events';
 import { createServer } from 'node:http';
-import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, realpath, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { test, type TestContext } from 'node:test';
 import { setup } from '../src/setup.js';
 import { setupWithCode } from '../src/setup-with-code.js';
+import type { SetupProgressEvent } from '../src/setup-progress.js';
 
 const code = `sc_install_${'C'.repeat(43)}`;
 const token = `sc_agent_${'T'.repeat(43)}`;
@@ -28,6 +29,158 @@ function assertPreservingRecovery(report: Awaited<ReturnType<typeof setupWithCod
   assert.match(steps, /Do not replay it/);
   assert.doesNotMatch(JSON.stringify(report), /remove any unused issued Agent Key/);
 }
+
+test('existing-key confirmation is read-only, safe, and distinct from failure or success', async t => {
+  const cwd = await fixture(t);
+  const original = `# keep\r\nSTEERCARDS_AGENT_KEY=${token}\r\nOTHER=unchanged\r\n`;
+  await writeFile(join(cwd, '.env'), original);
+  // A config conflict is only considered after the user chooses a key.
+  await mkdir(join(cwd, '.cursor'));
+  await writeFile(join(cwd, '.cursor', 'mcp.json'), '{"mcpServers":{"steercards":{"command":"user-owned"}}}');
+  const before = await readdir(cwd, { recursive: true });
+  const events: SetupProgressEvent[] = [];
+  let requests = 0, checks = 0, preflights = 0;
+  const report = await setupWithCode({ client: 'cursor', cwd, code, confirmExistingKey: true, onProgress: event => events.push(event) }, {
+    fetch: async () => { requests++; return response(); },
+    doctor: async () => { checks++; return doctor(); },
+    setup: { beforeCommit: async () => { preflights++; } },
+  });
+  assert.equal(report.ok, false);
+  assert.equal(report.status, 'confirmation-required');
+  assert.equal(report.error, undefined);
+  assert.equal(report.setup, null);
+  assert.equal(report.confirmation?.question, '.env에 Key가 있어요. 기존 키를 사용하시겠습니까?');
+  assert.deepEqual(report.confirmation?.choices.map(choice => choice.flag), ['--keep-agent-key', '--replace-agent-key']);
+  assert.equal(requests + checks + preflights, 0);
+  assert.deepEqual(await readdir(cwd, { recursive: true }), before);
+  assert.equal(await readFile(join(cwd, '.env'), 'utf8'), original);
+  assert.deepEqual(events.map(event => [event.stage, event.status]), [['preflight', 'started'], ['preflight', 'completed']]);
+  assert.equal(report.timings.stages.credentials.status, 'pending');
+  assert.equal(report.timings.stages.install.status, 'pending');
+  assert.equal(report.timings.stages.connection.status, 'pending');
+  assert.ok(Number.isFinite(report.timings.totalMs));
+  for (const secret of [token, code]) assert.ok(!JSON.stringify({ report, events }).includes(secret));
+});
+
+test('confirmed keep skips exchange, replace exchanges once, and missing keep never issues credentials', async t => {
+  for (const choice of ['keep', 'replace', 'missing'] as const) {
+    const cwd = await fixture(t);
+    const existing = `sc_agent_${'E'.repeat(43)}`;
+    if (choice !== 'missing') await writeFile(join(cwd, '.env'), `STEERCARDS_AGENT_KEY=${existing}\n`);
+    let requests = 0;
+    const events: SetupProgressEvent[] = [];
+    const report = await setupWithCode({ client: 'cursor', cwd, code, confirmExistingKey: true,
+      keepAgentKey: choice !== 'replace', replaceAgentKey: choice === 'replace', onProgress: event => events.push(event),
+    }, { fetch: async () => { requests++; return response(); }, doctor });
+    assert.equal(report.ok, choice !== 'missing', report.error);
+    assert.equal(requests, choice === 'replace' ? 1 : 0);
+    if (choice === 'missing') {
+      assert.equal(report.status, 'failed');
+      assert.match(report.error!, /no longer contains an Agent Key/);
+      assert.equal(report.timings.stages.preflight.status, 'failed');
+      assert.equal(report.timings.stages.connection.status, 'pending');
+      assert.deepEqual(await readdir(cwd), []);
+    } else {
+      assert.equal(report.status, 'completed');
+      assert.equal(report.credentials.status, choice === 'keep' ? 'kept' : 'saved');
+      assert.equal(await readFile(join(cwd, '.env'), 'utf8'), `STEERCARDS_AGENT_KEY=${choice === 'keep' ? existing : token}\n`);
+      assert.equal(report.timings.stages.credentials.status, choice === 'keep' ? 'skipped' : 'completed');
+      assert.equal(report.timings.stages.install.status, 'completed');
+      assert.equal(report.timings.stages.connection.status, 'completed');
+      assert.deepEqual(events.filter(event => event.status === 'started').map(event => event.stage), ['preflight', 'credentials', 'install', 'connection']);
+    }
+  }
+});
+
+test('confirmation protects empty or ambiguous env assignments and mutually exclusive choices', async t => {
+  for (const text of ['STEERCARDS_AGENT_KEY=\n', 'STEERCARDS_AGENT_KEY=one\nSTEERCARDS_AGENT_KEY=two\n', 'OTHER="unterminated\n', 'STEERCARDS_AGENT_KEY="value" garbage\n']) {
+    for (const selected of [{}, { keepAgentKey: true }, { replaceAgentKey: true }]) {
+      const cwd = await fixture(t);
+      await writeFile(join(cwd, '.env'), text);
+      let requests = 0;
+      const report = await setupWithCode({ client: 'cursor', cwd, code, confirmExistingKey: true, ...selected }, { fetch: async () => { requests++; return response(); }, doctor });
+      assert.equal(report.status, 'failed');
+      assert.equal(requests, 0);
+      assert.equal(await readFile(join(cwd, '.env'), 'utf8'), text);
+      assert.deepEqual(await readdir(cwd), ['.env']);
+    }
+  }
+  const cwd = await fixture(t);
+  const report = await setupWithCode({ client: 'cursor', cwd, code, keepAgentKey: true, replaceAgentKey: true });
+  assert.equal(report.status, 'failed');
+  assert.match(report.error!, /Choose only one/);
+  assert.deepEqual(await readdir(cwd), []);
+});
+
+test('key appearing or disappearing during preflight is never exchanged without the right choice', async t => {
+  for (const keep of [false, true]) {
+    const cwd = await fixture(t);
+    if (keep) await writeFile(join(cwd, '.env'), `STEERCARDS_AGENT_KEY=${token}\n`);
+    let requests = 0;
+    const report = await setupWithCode({ client: 'cursor', cwd, code, confirmExistingKey: true, keepAgentKey: keep }, {
+      fetch: async () => { requests++; return response(); }, doctor,
+      setup: { beforeCommit: async () => {
+        if (keep) await rm(join(cwd, '.env'));
+        else await writeFile(join(cwd, '.env'), `STEERCARDS_AGENT_KEY=${token}\n`);
+      } },
+    });
+    assert.equal(report.status, keep ? 'failed' : 'confirmation-required');
+    assert.equal(requests, 0);
+    await assert.rejects(readFile(join(cwd, '.cursor', 'mcp.json')), { code: 'ENOENT' });
+  }
+});
+
+test('connection deadline aborts stalled HTTP headers and bodies and returns without waiting for close', async t => {
+  for (const body of [false, true]) {
+    const cwd = await fixture(t);
+    await writeFile(join(cwd, '.env'), `STEERCARDS_AGENT_KEY=${token}\n`);
+    let disconnected = false;
+    const server = createServer((req, res) => {
+      req.resume();
+      res.once('close', () => { disconnected = true; });
+      if (body) { res.writeHead(503, { 'Content-Type': 'application/json' }); res.write('{"error":'); }
+    });
+    server.listen(0, '127.0.0.1'); await once(server, 'listening');
+    t.after(() => { server.closeAllConnections(); server.close(); });
+    const began = performance.now();
+    const report = await setupWithCode({ client: 'cursor', cwd, code, keepAgentKey: true, url: `http://127.0.0.1:${(server.address() as any).port}/api/mcp` }, { connectionTimeoutMs: 100 });
+    assert.equal(report.status, 'failed');
+    assert.equal(report.doctor.connected, false);
+    assert.equal(report.timings.stages.connection.status, 'failed');
+    assert.ok(performance.now() - began < 2000);
+    // The abort must release the actual socket, not merely race the report promise.
+    for (let i = 0; i < 20 && !disconnected; i++) await new Promise(resolve => setTimeout(resolve, 10));
+    assert.equal(disconnected, true);
+    assert.equal(await readFile(join(cwd, '.env'), 'utf8'), `STEERCARDS_AGENT_KEY=${token}\n`);
+  }
+});
+
+test('connection deadline cancels SDK requests accepted without a later result at every stage', async t => {
+  for (const stalled of ['initialize', 'tools/list', 'tools/call']) {
+    const cwd = await fixture(t);
+    await writeFile(join(cwd, '.env'), `STEERCARDS_AGENT_KEY=${token}\n`);
+    const server = createServer(async (req, res) => {
+      if (req.method !== 'POST') { res.writeHead(405); res.end(); return; }
+      let body = '';
+      for await (const chunk of req) body += chunk;
+      const rpc = JSON.parse(body);
+      if (rpc.id === undefined || rpc.method === stalled) { res.writeHead(202); res.end(); return; }
+      const result = rpc.method === 'initialize'
+        ? { protocolVersion: '2025-11-25', capabilities: { tools: {} }, serverInfo: { name: 'test', version: '1' } }
+        : { tools: [{ name: 'list_workspaces', inputSchema: { type: 'object' } }] };
+      res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify({ jsonrpc: '2.0', id: rpc.id, result }));
+    });
+    server.listen(0, '127.0.0.1'); await once(server, 'listening');
+    t.after(() => { server.closeAllConnections(); server.close(); });
+    const began = performance.now();
+    const report = await setupWithCode({ client: 'cursor', cwd, code, keepAgentKey: true, url: `http://127.0.0.1:${(server.address() as any).port}/api/mcp` }, { connectionTimeoutMs: 100 });
+    assert.equal(report.status, 'failed', stalled);
+    assert.equal(report.timings.stages.connection.status, 'failed');
+    assert.ok(performance.now() - began < 2000);
+    assert.equal(await readFile(join(cwd, '.env'), 'utf8'), `STEERCARDS_AGENT_KEY=${token}\n`);
+  }
+});
 
 test('one prompt exchanges once, writes only env credentials, installs MCP and skill, and keeps key on rerun', async t => {
   const cwd = await fixture(t);
@@ -83,6 +236,8 @@ test('dry run performs no exchange and does not create project files', async t =
   const report = await setupWithCode({ client: 'codex', cwd, code, dryRun: true }, { fetch: async () => { requests++; return response(); }, doctor });
   assert.equal(report.ok, true, report.error);
   assert.equal(report.credentials.status, 'dry-run');
+  assert.equal(report.status, 'dry-run');
+  assert.deepEqual(Object.values(report.timings.stages).map(stage => stage.status), ['completed', 'skipped', 'skipped', 'skipped']);
   assert.equal(requests, 0);
   const { readdir } = await import('node:fs/promises');
   assert.deepEqual(await readdir(cwd), []);
@@ -97,6 +252,9 @@ test('saved key survives later config write failure and plain setup recovers wit
   });
   assert.equal(report.ok, false);
   assert.equal(report.credentials.status, 'saved');
+  assert.equal(report.timings.stages.install.status, 'failed');
+  assert.equal(report.timings.stages.connection.status, 'pending');
+  assert.ok(report.timings.totalMs >= report.timings.stages.install.durationMs);
   assert.equal(requests, 1);
   assert.ok(!JSON.stringify(report).includes(token));
   assert.ok(!JSON.stringify(report).includes(code));
