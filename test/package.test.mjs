@@ -249,6 +249,48 @@ test('packed npm launchers preserve project env-file semantics', { timeout: 2400
     } finally { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
   });
 
+  await t.test('packed CLI exits at its deadline after HTTP 202 without an MCP result', async () => {
+    // A report-only Promise.race passes stdout checks while leaving the SDK's
+    // 60s request timer alive. Verify real process termination for all requests.
+    await Promise.all(['initialize', 'tools/list', 'tools/call'].map(async stalled => {
+      const code = `sc_install_${'C'.repeat(43)}`;
+      const token = `sc_agent_${'T'.repeat(43)}`;
+      const stalledProject = join(temp, `accepted ${stalled.replace('/', '-')}`);
+      await mkdir(stalledProject);
+      const original = `STEERCARDS_AGENT_KEY=${token}\n`;
+      await writeFile(join(stalledProject, '.env'), original);
+      const server = createServer(async (req, res) => {
+        if (req.method !== 'POST') { res.writeHead(405); res.end(); return; }
+        let body = '';
+        for await (const chunk of req) body += chunk;
+        const rpc = JSON.parse(body);
+        if (rpc.id === undefined || rpc.method === stalled) { res.writeHead(202); res.end(); return; }
+        const result = rpc.method === 'initialize'
+          ? { protocolVersion: '2025-11-25', capabilities: { tools: {} }, serverInfo: { name: 'test', version: '1' } }
+          : { tools: [{ name: 'list_workspaces', inputSchema: { type: 'object' } }] };
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify({ jsonrpc: '2.0', id: rpc.id, result }));
+      });
+      server.listen(0, '127.0.0.1'); await once(server, 'listening');
+      try {
+        const began = performance.now();
+        const result = await run(bin, ['setup', '--client', 'cursor', '--cwd', stalledProject, '--env-file', '.env', '--setup-code-stdin', '--confirm-existing-key', '--keep-agent-key', '--url', `http://127.0.0.1:${server.address().port}/api/mcp`], { input: code + '\n' });
+        const durationMs = performance.now() - began;
+        assert.equal(result.status, 1, `${stalled}: ${result.stderr}`);
+        assert.equal(result.signal, null);
+        assert.ok(durationMs < 22000, `${stalled} process remained alive after deadline (${durationMs}ms)`);
+        const report = JSON.parse(result.stdout);
+        assert.equal(report.status, 'failed');
+        assert.equal(report.doctor.connected, false);
+        assert.equal(report.timings.stages.connection.status, 'failed');
+        assert.ok(report.timings.stages.connection.durationMs >= 14500);
+        assert.equal(await readFile(join(stalledProject, '.env'), 'utf8'), original);
+        assert.ok(!`${result.stdout}${result.stderr}`.includes(token));
+        assert.ok(!`${result.stdout}${result.stderr}`.includes(code));
+      } finally { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
+    }));
+  });
+
   await t.test('real npx failure recovery preserves reused keys and hides server secrets', async () => {
     const code = `sc_install_${'C'.repeat(43)}`;
     const token = `sc_agent_${'T'.repeat(43)}`;

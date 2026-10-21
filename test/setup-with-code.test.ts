@@ -155,6 +155,33 @@ test('connection deadline aborts stalled HTTP headers and bodies and returns wit
   }
 });
 
+test('connection deadline cancels SDK requests accepted without a later result at every stage', async t => {
+  for (const stalled of ['initialize', 'tools/list', 'tools/call']) {
+    const cwd = await fixture(t);
+    await writeFile(join(cwd, '.env'), `STEERCARDS_AGENT_KEY=${token}\n`);
+    const server = createServer(async (req, res) => {
+      if (req.method !== 'POST') { res.writeHead(405); res.end(); return; }
+      let body = '';
+      for await (const chunk of req) body += chunk;
+      const rpc = JSON.parse(body);
+      if (rpc.id === undefined || rpc.method === stalled) { res.writeHead(202); res.end(); return; }
+      const result = rpc.method === 'initialize'
+        ? { protocolVersion: '2025-11-25', capabilities: { tools: {} }, serverInfo: { name: 'test', version: '1' } }
+        : { tools: [{ name: 'list_workspaces', inputSchema: { type: 'object' } }] };
+      res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify({ jsonrpc: '2.0', id: rpc.id, result }));
+    });
+    server.listen(0, '127.0.0.1'); await once(server, 'listening');
+    t.after(() => { server.closeAllConnections(); server.close(); });
+    const began = performance.now();
+    const report = await setupWithCode({ client: 'cursor', cwd, code, keepAgentKey: true, url: `http://127.0.0.1:${(server.address() as any).port}/api/mcp` }, { connectionTimeoutMs: 100 });
+    assert.equal(report.status, 'failed', stalled);
+    assert.equal(report.timings.stages.connection.status, 'failed');
+    assert.ok(performance.now() - began < 2000);
+    assert.equal(await readFile(join(cwd, '.env'), 'utf8'), `STEERCARDS_AGENT_KEY=${token}\n`);
+  }
+});
+
 test('one prompt exchanges once, writes only env credentials, installs MCP and skill, and keeps key on rerun', async t => {
   const cwd = await fixture(t);
   let exchanges = 0;
