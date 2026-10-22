@@ -43,7 +43,7 @@ Do not enumerate every tool or load every guide for a small task. If a capabilit
 | [claims-runs](references/claims-runs.md) | Accepting work, leases, handoffs, progress, cancellation or usage reporting |
 | [context](references/context.md) | Bounded task context, instructions, handoff notes or completion reports |
 | [files](references/files.md) | Images, card artifacts, uploads, publication or revision conflicts |
-| [collaboration](references/collaboration.md) | Comments, activity feeds, human checks, reservations or webhooks |
+| [collaboration](references/collaboration.md) | Before creating human checks; comments, activity feeds, reservations or webhooks |
 
 ## Preserve the server's contracts
 
