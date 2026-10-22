@@ -2,6 +2,12 @@
 
 공개 패키지는 [`@steercards/agent-tools`](https://www.npmjs.com/package/@steercards/agent-tools), 소스는 [`velody-ai/steercards-agent-tools`](https://github.com/velody-ai/steercards-agent-tools)에서 관리합니다. 일반 CI는 검증을 수행하고, 안정 버전의 GitHub Release를 게시하면 `.github/workflows/publish.yml`이 npm에 게시합니다. 태그 push나 main 병합만으로는 게시하지 않습니다.
 
+## 0.1.6 확인 요청 제목 안내 (SC-591)
+
+- 확인 요청 생성 전에 collaboration 가이드를 읽고, 요청·단계 제목은 행동이나 질문이 분명한 짧은 문장으로 작성하도록 안내합니다. 기대 결과와 상세 배경은 각각 `expected`와 연결 카드 본문으로 나눕니다.
+- compact 가이드, full MCP resource, 설치 스킬과 내보낸 ZIP에 같은 안내가 포함됩니다. 기존 설치의 스킬을 갱신하려면 최신 버전 `setup`을 다시 실행하고 MCP를 재연결합니다. Desktop에 올린 스킬은 새 ZIP을 다시 업로드합니다.
+- 공통 MCP 도구 설명은 앱 배포에서 별도로 제공됩니다. compact 모드의 도구 검색은 원격 카탈로그를 새로 조회하므로, 기존 연결도 `request_human_check`를 다시 검색한 뒤 설명을 읽으면 새 안내를 받습니다. full 모드 등에서 이전 설명을 유지하면 MCP를 재연결합니다.
+
 ## 0.1.5 설치 흐름 변경 (SC-587)
 
 - `setup --setup-code-stdin --confirm-existing-key`는 기존 프로젝트 Key가 있으면 파일을 쓰거나 코드를 교환하지 않고 정상 대기 보고서(`status:"confirmation-required"`, `ok:false`, exit 0)를 반환합니다. 선택 후 `--keep-agent-key` 또는 `--replace-agent-key`를 추가합니다. 옵션 없는 공개 명령은 이전 동작을 유지합니다.
