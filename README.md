@@ -215,7 +215,7 @@ steercards explore --workspace 123 'cat /projects/7/boards/19/cards/SC-42/card.m
 steercards explore --workspace 123 "sed -n '20,60p' /projects/7/boards/19/cards/SC-42/comments.md"
 ```
 
-예시 ID·키는 실제 목록에서 확인한 값으로 바꿉니다. `ls`로 범위를 좁히고 `rg`로 찾은 뒤 필요한 파일·줄만 읽습니다. 경로는 `/projects/<projectId>/boards/<boardId>/cards/<현재 카드 키>/card.md`와 `comments.md`입니다. 알려진 카드 키는 `get_card` 등으로 바로 조회하고, 상태·참여자·속성 같은 구조화 필터는 `search_cards`를 사용합니다.
+예시 ID·키는 실제 목록에서 확인한 값으로 바꿉니다. `ls`로 범위를 좁히고 `rg`로 찾은 뒤 필요한 파일·줄만 읽습니다. 경로는 `/projects/<projectId>/boards/<boardId>/cards/<현재 카드 키>/card.md`와 `comments.md`입니다. 알려진 카드 키는 `get_card` 등으로 바로 조회합니다. 상태·승인 필터와 보관 카드 포함 여부는 `search_cards`의 `status`·`approved`·`archived`로 지정하고, 보드의 활성 카드를 참여자로 찾을 때는 `list_participant_cards`를 사용합니다. 다른 속성 구조는 `get_board`와 현재 사용 가능한 도구의 스키마로 확인합니다.
 
 명령 전체를 **하나의 따옴표 인자**로 전달하세요. `ls`, `find`, `rg`, `grep`, `cat`, `sed -n`, `head`, `tail`의 제한된 문법만 지원하며 정확한 옵션은 `help`를 따릅니다. 파이프·리다이렉션·확장·명령 연결·파일 쓰기는 지원하지 않습니다.
 

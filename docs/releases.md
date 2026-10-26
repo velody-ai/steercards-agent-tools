@@ -2,6 +2,11 @@
 
 공개 패키지는 [`@steercards/agent-tools`](https://www.npmjs.com/package/@steercards/agent-tools), 소스는 [`velody-ai/steercards-agent-tools`](https://github.com/velody-ai/steercards-agent-tools)에서 관리합니다. 일반 CI는 검증을 수행하고, 안정 버전의 GitHub Release를 게시하면 `.github/workflows/publish.yml`이 npm에 게시합니다. 태그 push나 main 병합만으로는 게시하지 않습니다.
 
+## 0.2.2 카드 탐색 필터 안내 수정 (SC-635)
+
+- `search_cards`는 상태·승인 필터와 보관 카드 포함 여부에 사용하고, 참여자는 `list_participant_cards`로 보드의 활성 카드를 조회하도록 안내합니다. 다른 속성 구조는 `get_board`와 사용 가능한 도구의 현재 스키마로 확인합니다.
+- exploration·discovery·cards 가이드, Skill 개요, README와 MCP 초기 instructions에 같은 안내를 적용합니다. 카드 작업 배지와 관리 설치 자동 갱신 흐름은 유지합니다.
+
 ## 0.2.1 카드 작업 배지와 관리 설치 자동 갱신 (SC-634, SC-636)
 
 - 실제 카드 작업 시작 전 `working`, 5분 갱신(10분 stale 이전), 사람 답 대기 시 `waiting_for_input`과 질문, 차단 오류 시 `error`, 재개 시 `working`, 완료·중단·인계 전 clear를 기본 계약으로 안내합니다. 답·해결을 기다리는 동안은 턴 종료만으로 지우지 않습니다. 조회·단순 배정은 배지를 만들지 않습니다.

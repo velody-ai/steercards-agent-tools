@@ -5,7 +5,7 @@ Use `explore_cards` for read-only directory navigation and text search across ca
 ## Choose the right lookup
 
 - For a known card key such as `SC-42`, use `get_card` or `get_card_by_number` to resolve its current key and location directly. An old prefix can be an alias; use the returned canonical key.
-- For property, participant, status, archive or other structured filters, use `search_cards` and its live schema. Text matches in rendered Markdown do not establish a complete structured query result.
+- For status or approval filters and archived-card inclusion, use `search_cards` with its supported `status`, `approved` and `archived` inputs. For participants, use `list_participant_cards` on the selected board with exact participant kind/ID; it returns active cards. For other property structure, inspect `get_board` and the live schema of any available tool before constructing inputs. Text matches in rendered Markdown do not establish a complete structured query result.
 - For unfamiliar content, use `explore_cards`: list directories, narrow the path, search text, then read only the matching files or line ranges. Do not download every card body just to find a few relevant lines.
 
 Select `workspaceId` from an accessible workspace, never the browser's active selection. Virtual paths are absolute within that workspace:
