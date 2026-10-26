@@ -2,6 +2,13 @@
 
 공개 패키지는 [`@steercards/agent-tools`](https://www.npmjs.com/package/@steercards/agent-tools), 소스는 [`velody-ai/steercards-agent-tools`](https://github.com/velody-ai/steercards-agent-tools)에서 관리합니다. 일반 CI는 검증을 수행하고, 안정 버전의 GitHub Release를 게시하면 `.github/workflows/publish.yml`이 npm에 게시합니다. 태그 push나 main 병합만으로는 게시하지 않습니다.
 
+## 0.3.0 대화형 워크플로우 온보딩 (SC-657)
+
+- `steercards-workflow` 스킬은 “스티어카드 워크플로우 만들자/수정하자” 요청에서 기존 환경을 조사하고 업무 방식·역할·완료 기준·자율 범위·모델 정책을 대화로 정합니다. 구체적인 초안을 확인받은 뒤 사용자 문서와 지침 참조, 지원되는 역할 설정과 프로필을 적용하고 결과를 검증합니다.
+- `setup`과 관리 갱신은 두 스킬을 함께 처리합니다. 단일 manifest v1은 v2 이름별 ownership으로 호환하며 전체 사전 검사와 편집·경합 보호·실패 복구를 유지합니다. 사용자 워크플로우·AGENTS·실행 역할은 자동 갱신 대상이 아닙니다.
+- 기존 `paths.skill`/`paths.skillZip`과 개별 설치 기본값을 유지하고 이름별 `paths.skills`/`paths.skillZips`, 개별 `--skill steercards-workflow` 선택을 추가합니다. Desktop에는 두 개의 독립 ZIP을 제공하며 각각 수동 업로드합니다.
+- 새 안정 버전으로 패키지를 갱신하고 MCP를 재연결한 뒤 스킬을 다시 불러옵니다. 설치만으로 인터뷰·첫 개발 작업·백그라운드 실행을 시작하지 않습니다. 공개 설치·정적 가이드 검증은 앱 배포와 별도로 확인합니다.
+
 ## 0.2.6 작업 흐름을 전달하는 댓글·멘션 지침 (SC-652)
 
 - 사람이 카드 댓글만 훑어도 작업 이유·현재 상황·다음 단계를 이해할 수 있도록 설치 Skill 본문에 댓글 작성 시점을 명시합니다. 착수 의도, 하위 카드 생성·작업 분리 등 중요한 행동의 예고, 의미 있는 진척·문제·해결과 완료·인계를 짧고 자연스럽게 공유합니다.
