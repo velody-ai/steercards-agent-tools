@@ -398,3 +398,175 @@ test('setup only references env paths and never follows or reads an existing dot
   assert.ok(!JSON.stringify(result).includes('never-read-or-copy'));
   assert.ok(!(await readFile(result.paths.config, 'utf8')).includes('never-read-or-copy'));
 });
+
+async function bundleFixture(t: { after: (callback: () => Promise<void>) => void }) {
+  const existing = await fixture(t);
+  const workflow = join(existing.root, 'workflow-source');
+  await put(join(workflow, 'SKILL.md'), '---\nname: steercards-workflow\ndescription: Configure a workflow\n---\nWorkflow v1');
+  await put(join(workflow, 'references', 'interview.md'), 'Interview v1');
+  return { ...existing, workflow, sources: { steercards: existing.source, 'steercards-workflow': workflow } };
+}
+
+async function legacyManifest(path: string) {
+  const manifest = JSON.parse(await readFile(path, 'utf8'));
+  const { skills: _skillPaths, skillZips: _zipPaths, ...paths } = manifest.paths;
+  const { skills, ...rest } = manifest;
+  await writeFile(path, JSON.stringify({ ...rest, schemaVersion: 1, paths, skill: skills.steercards }, null, 2) + '\n');
+}
+
+for (const client of ['codex', 'claude-code', 'cursor']) {
+  test(`${client}: installs and updates both bundles while user workflows, instructions and roles stay outside ownership`, async t => {
+    const { cwd, sources, source, workflow } = await bundleFixture(t);
+    const options = { client, cwd };
+    const userFiles = ['AGENTS.md', 'CLAUDE.md', 'docs/steercards-workflow.md', '.codex/agents/builder.toml', '.claude/agents/builder.md', '.cursor/agents/builder.md'];
+    for (const file of userFiles) await put(join(cwd, file), `User content: ${file}`);
+    const installed = await setup(options, { sources, version: '1.0.0' });
+    assert.equal(installed.paths.skills!.steercards, installed.paths.skill);
+    assert.deepEqual(Object.keys(installed.paths.skills!), ['steercards', 'steercards-workflow']);
+    const workflowPath = installed.paths.skills!['steercards-workflow']!;
+    assert.match(await readFile(join(workflowPath, 'SKILL.md'), 'utf8'), /Workflow v1/);
+    const owned = JSON.parse(await readFile(installed.paths.manifest, 'utf8'));
+    assert.equal(owned.schemaVersion, 2);
+    assert.deepEqual(Object.keys(owned.skills), ['steercards', 'steercards-workflow']);
+    await put(join(workflowPath, 'user-notes.md'), 'Independent notes');
+    await writeFile(join(source, 'SKILL.md'), 'Steercards v2');
+    await writeFile(join(workflow, 'SKILL.md'), 'Workflow v2');
+    assert.equal((await setup(options, { sources, version: '2.0.0' })).status, 'updated');
+    assert.equal(await readFile(join(workflowPath, 'SKILL.md'), 'utf8'), 'Workflow v2');
+    assert.equal(await readFile(join(installed.paths.skill!, 'SKILL.md'), 'utf8'), 'Steercards v2');
+    assert.equal(await readFile(join(workflowPath, 'user-notes.md'), 'utf8'), 'Independent notes');
+    for (const file of userFiles) assert.equal(await readFile(join(cwd, file), 'utf8'), `User content: ${file}`);
+    assert.equal((await setup(options, { sources, version: '2.0.0' })).status, 'unchanged');
+  });
+
+  test(`${client}: schema 1 setup and startup upgrades add onboarding without adopting user edits`, async t => {
+    for (const startup of [false, true]) {
+      const { cwd, source, sources } = await bundleFixture(t);
+      const options = { client, cwd };
+      const installed = await setup(options, { source, version: '1.0.0' });
+      await legacyManifest(installed.paths.manifest);
+      await writeFile(join(installed.paths.skill!, 'user-notes.md'), 'Keep notes');
+      const upgraded = startup ? await refreshManagedSetup(options, { sources, version: '2.0.0' }) : await setup(options, { sources, version: '2.0.0' });
+      assert.equal(upgraded.status, 'updated');
+      const manifest = JSON.parse(await readFile(installed.paths.manifest, 'utf8'));
+      assert.equal(manifest.schemaVersion, 2);
+      assert.deepEqual(Object.keys(manifest.skills), ['steercards', 'steercards-workflow']);
+      assert.match(await readFile(join(manifest.paths.skills['steercards-workflow'], 'SKILL.md'), 'utf8'), /Workflow v1/);
+      assert.equal(await readFile(join(installed.paths.skill!, 'user-notes.md'), 'utf8'), 'Keep notes');
+    }
+  });
+}
+
+test('both skills are checked before any managed write or credential hook', async t => {
+  const { cwd, sources, source } = await bundleFixture(t);
+  const options = { client: 'cursor', cwd };
+  const installed = await setup(options, { sources, version: '1.0.0' });
+  await writeFile(join(source, 'SKILL.md'), 'Incoming first skill update');
+  const workflowPath = installed.paths.skills!['steercards-workflow']!;
+  await writeFile(join(workflowPath, 'SKILL.md'), 'User workflow skill edits');
+  const before = await tree(cwd);
+  let writes = 0, credentialHooks = 0;
+  await assert.rejects(setup(options, { sources, version: '2.0.0', beforeWrite: async () => { writes++; }, afterPreflight: async () => { credentialHooks++; } }), /Managed skill file.*steercards-workflow/);
+  assert.equal(writes, 0);
+  assert.equal(credentialHooks, 0);
+  assert.deepEqual(await tree(cwd), before);
+  assert.equal((await refreshManagedSetup(options, { sources, version: '2.0.0' })).status, 'blocked');
+  assert.deepEqual(await tree(cwd), before);
+});
+
+test('a conflict in the newly added workflow skill blocks a schema 1 upgrade before writing', async t => {
+  const { cwd, source, sources } = await bundleFixture(t);
+  const options = { client: 'codex', cwd };
+  const installed = await setup(options, { source, version: '1.0.0' });
+  await legacyManifest(installed.paths.manifest);
+  await put(join(cwd, '.agents', 'skills', 'steercards-workflow', 'SKILL.md'), 'Existing user workflow skill');
+  const before = await tree(cwd);
+  await assert.rejects(setup(options, { sources, version: '2.0.0' }), /(?:unmanaged skill file differs|Existing skill is incomplete).*steercards-workflow/);
+  assert.deepEqual(await tree(cwd), before);
+});
+
+test('a later workflow write failure rolls back changes to both skills and config', async t => {
+  const { cwd, sources, source, workflow } = await bundleFixture(t);
+  const options = { client: 'claude-code', cwd };
+  const fresh = await tree(cwd);
+  await assert.rejects(setup(options, { sources, version: '1.0.0', beforeWrite: async path => {
+    if (path.endsWith(join('steercards-workflow', 'references', 'interview.md'))) throw new Error('injected fresh workflow failure');
+  } }), /injected fresh workflow failure/);
+  assert.deepEqual(await tree(cwd), fresh);
+  const installed = await setup(options, { sources, version: '1.0.0' });
+  await writeFile(join(source, 'SKILL.md'), 'Steercards v2');
+  await writeFile(join(workflow, 'SKILL.md'), 'Workflow v2');
+  await writeFile(join(workflow, 'references', 'interview.md'), 'Interview v2');
+  const before = await tree(cwd);
+  await assert.rejects(setup({ ...options, mode: 'full' }, { sources, version: '2.0.0', beforeWrite: async path => {
+    if (path === join(installed.paths.skills!['steercards-workflow']!, 'references', 'interview.md')) throw new Error('injected later failure');
+  } }), /injected later failure/);
+  assert.deepEqual(await tree(cwd), before);
+});
+
+test('multi-skill preview is read-only and a forged workflow destination is rejected', async t => {
+  const { cwd, sources } = await bundleFixture(t);
+  const options = { client: 'codex', cwd };
+  const before = await tree(cwd);
+  const preview = await setup({ ...options, dryRun: true }, { sources, version: '1.0.0' });
+  assert.equal(preview.status, 'dry-run');
+  assert.ok(preview.actions.some(action => action.includes(join('steercards-workflow', 'SKILL.md'))));
+  assert.deepEqual(await tree(cwd), before);
+  const installed = await setup(options, { sources, version: '1.0.0' });
+  const manifest = JSON.parse(await readFile(installed.paths.manifest, 'utf8'));
+  manifest.paths.skills['steercards-workflow'] = join(cwd, 'docs');
+  await writeFile(installed.paths.manifest, JSON.stringify(manifest));
+  const protectedTree = await tree(cwd);
+  await assert.rejects(setup(options, { sources, version: '2.0.0' }), /manifest does not match/);
+  assert.deepEqual(await tree(cwd), protectedTree);
+});
+
+test('workflow preflight races and symlinks do not consume credentials or overwrite managed content', { skip: process.platform === 'win32' }, async t => {
+  const { cwd, root, sources, workflow } = await bundleFixture(t);
+  const options = { client: 'cursor', cwd };
+  const installed = await setup(options, { sources, version: '1.0.0' });
+  const workflowPath = installed.paths.skills!['steercards-workflow']!;
+  await writeFile(join(workflow, 'SKILL.md'), 'Incoming workflow');
+  const config = await readFile(installed.paths.config), manifest = await readFile(installed.paths.manifest);
+  let credentialHooks = 0;
+  await assert.rejects(setup(options, { sources, version: '2.0.0', afterPreflight: async () => { credentialHooks++; }, beforeCommit: async () => {
+    await writeFile(join(workflowPath, 'SKILL.md'), 'Concurrent user edit');
+  } }), /changed during preflight/);
+  assert.equal(credentialHooks, 0);
+  assert.ok((await readFile(installed.paths.config)).equals(config));
+  assert.ok((await readFile(installed.paths.manifest)).equals(manifest));
+  await rm(workflowPath, { recursive: true });
+  const outside = join(root, 'outside');
+  await mkdir(outside);
+  await symlink(outside, workflowPath);
+  await assert.rejects(setup(options, { sources, version: '2.0.0' }), /symbolic link/);
+  assert.deepEqual(await readdir(outside), []);
+});
+
+for (const platform of ['darwin', 'win32'] as const) {
+  test(`Desktop ${platform}: schema 1 upgrades and startup manage two independent portable ZIPs`, async t => {
+    const { cwd, home, source, sources, workflow } = await bundleFixture(t);
+    const options: SetupOptions = { client: 'claude-desktop', cwd, home, platform, env: { APPDATA: join(home, 'appdata') } };
+    const previous = await setup(options, { source, version: '1.0.0' });
+    await legacyManifest(previous.paths.manifest);
+    const installed = await setup(options, { sources, version: '2.0.0' });
+    assert.equal(installed.paths.skillZip, installed.paths.skillZips!.steercards);
+    assert.deepEqual(Object.keys(installed.paths.skillZips!), ['steercards', 'steercards-workflow']);
+    const workflowZip = installed.paths.skillZips!['steercards-workflow']!;
+    assert.equal(workflowZip, join(cwd, '.steercards', 'steercards-workflow-skill.zip'));
+    const entries = unzipSync(await readFile(workflowZip));
+    assert.match(strFromU8(entries['steercards-workflow/SKILL.md']), /Workflow v1/);
+    assert.equal(entries['steercards/SKILL.md'], undefined);
+    assert.ok(installed.nextSteps.some(step => step.includes(workflowZip) && step.includes('separately')));
+    assert.equal((await setup(options, { sources, version: '2.0.0' })).status, 'unchanged');
+    await writeFile(join(workflow, 'SKILL.md'), 'Workflow v3');
+    assert.deepEqual(await refreshManagedSetup(options, { sources, version: '3.0.0' }), { status: 'updated', desktopSkillUploadRequired: true });
+    assert.equal(strFromU8(unzipSync(await readFile(workflowZip))['steercards-workflow/SKILL.md']), 'Workflow v3');
+    await writeFile(workflowZip, 'User ZIP replacement');
+    await writeFile(join(source, 'SKILL.md'), 'Steercards v4');
+    const before = await tree(cwd), config = await readFile(installed.paths.config);
+    await assert.rejects(setup(options, { sources, version: '4.0.0' }), /existing skill ZIP differs.*steercards-workflow/);
+    assert.deepEqual(await tree(cwd), before);
+    assert.ok((await readFile(installed.paths.config)).equals(config));
+  });
+}

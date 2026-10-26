@@ -22,20 +22,21 @@ steercards explore --workspace ID COMMAND [--board ID] [--status VALUE ...]
   [--archived active|archived|all] [--include-relations] [--cursor TOKEN] [--max-chars N]
 steercards doctor [--connect]
 steercards config CLIENT [--local] [--mode compact|full]
-steercards skill install --client CLIENT [--global]
-steercards skill export --output PATH.zip
+steercards skill install --client CLIENT [--global] [--skill steercards|steercards-workflow]
+steercards skill export --output PATH.zip [--skill steercards|steercards-workflow]
 
 Connection options: --cwd PATH --env-file PATH --url URL
 Default .env: exactly --cwd/.env (otherwise current directory).
 Environment: STEERCARDS_AGENT_KEY, optional STEERCARDS_MCP_URL.
 Clients: claude-code, codex, codex-app, codex-cli, cursor, claude-desktop.
-setup installs MCP configuration and the skill together.
-setup uses project scope (Desktop uses its user configuration and a project ZIP).
+setup installs MCP configuration and both Steercards skills together.
+skill install/export defaults to steercards; use --skill steercards-workflow for onboarding.
+setup uses project scope (Desktop uses its user configuration and two project ZIPs).
 Npm MCP commands use @latest at the next process start and sync managed skills.
 --npx explicitly switches an existing local setup to npm automatic updates.
 --dry-run previews setup without writing files. No key is needed for setup.
 --setup-code-stdin reads a one-use installation code, protects the project .env,
-  installs MCP and the skill, then checks the connection. Existing keys are kept.
+  installs MCP and both skills, then checks the connection. Existing keys are kept.
 --replace-agent-key explicitly replaces the project .env Agent Key.
 --confirm-existing-key returns confirmation-required before writing when a key exists.
 --keep-agent-key requires the existing project key and never exchanges a code.
@@ -95,7 +96,7 @@ async function main() {
   const { values, positionals } = parseArgs({ allowPositionals: true, strict: true, options: {
     cwd: { type: 'string' }, 'env-file': { type: 'string' }, url: { type: 'string' }, mode: { type: 'string' },
     json: { type: 'string' }, file: { type: 'string' }, stdin: { type: 'boolean' },
-    client: { type: 'string' }, global: { type: 'boolean' }, output: { type: 'string' },
+    client: { type: 'string' }, global: { type: 'boolean' }, output: { type: 'string' }, skill: { type: 'string' },
     limit: { type: 'string' }, connect: { type: 'boolean' }, local: { type: 'boolean' },
     workspace: { type: 'string' }, cursor: { type: 'string' }, 'max-chars': { type: 'string' },
     board: { type: 'string' }, status: { type: 'string', multiple: true },
@@ -110,6 +111,7 @@ async function main() {
   const [command, name, ...extra] = positionals;
   const options = { cwd: values.cwd, envFile: values['env-file'], url: values.url };
   if (extra.length) throw new Error('Unexpected extra arguments. Use --help.');
+  if (values.skill !== undefined && command !== 'skill') throw new Error('--skill is only supported by skill install or skill export.');
   if (command !== 'explore' && [values.workspace, values.cursor, values['max-chars'], values.board, values.status, values.archived, values['include-relations']].some(value => value !== undefined)) {
     throw new Error('--workspace, --cursor, --max-chars, --board, --status, --archived and --include-relations are only supported by explore.');
   }
@@ -158,11 +160,11 @@ async function main() {
   if (command === 'skill') {
     if (name === 'install') {
       if (!values.client) throw new Error('skill install requires --client.');
-      output(await installSkill({ client: values.client, cwd: values.cwd, global: values.global })); return;
+      output(await installSkill({ client: values.client, cwd: values.cwd, global: values.global, skill: values.skill })); return;
     }
     if (name === 'export') {
       if (!values.output) throw new Error('skill export requires --output PATH.zip.');
-      output({ path: await exportSkill(resolve(values.cwd ?? process.cwd(), values.output)) }); return;
+      output({ path: await exportSkill(resolve(values.cwd ?? process.cwd(), values.output), undefined, values.skill) }); return;
     }
     throw new Error('Use skill install or skill export.');
   }
@@ -217,7 +219,7 @@ async function main() {
   if (command === 'serve' && values.client) {
     const refreshed = await refreshManagedSetup({ ...options, client: values.client, mode: values.mode, local: values.local });
     if (refreshed.status === 'blocked') process.stderr.write(JSON.stringify({ type: 'steercards-update', status: 'blocked', message: 'Automatic update could not complete. Review the managed config, skill, permissions and setup lock, then rerun latest setup if needed. MCP startup will continue.' }) + '\n');
-    else if (refreshed.status === 'updated') process.stderr.write(JSON.stringify({ type: 'steercards-update', status: 'updated', version: packageInfo.version, ...(refreshed.desktopSkillUploadRequired ? { message: 'The skill ZIP was updated. Upload it again in Claude Desktop skill settings.' } : {}) }) + '\n');
+    else if (refreshed.status === 'updated') process.stderr.write(JSON.stringify({ type: 'steercards-update', status: 'updated', version: packageInfo.version, ...(refreshed.desktopSkillUploadRequired ? { message: 'The skill ZIPs were updated. Upload both again in Claude Desktop skill settings.' } : {}) }) + '\n');
   }
   const config = await loadConfig(options);
   secret = config.agentKey;

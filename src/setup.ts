@@ -6,7 +6,7 @@ import { isDeepStrictEqual } from 'node:util';
 import { applyEdits, getNodeValue, modify, parseTree, type Node, type ParseError } from 'jsonc-parser';
 import { parse as parseToml } from 'smol-toml';
 import { zipSync } from 'fflate';
-import { clientConfig, clients, packageInfo, skillRoot } from './install.js';
+import { clientConfig, clients, packageInfo, skillNames, skillRoots, type SkillName } from './install.js';
 
 export interface SetupOptions {
   client: string;
@@ -25,7 +25,7 @@ export interface SetupReport {
   client: string;
   version: string;
   status: 'installed' | 'updated' | 'unchanged' | 'dry-run';
-  paths: { config: string; skill?: string; skillZip?: string; manifest: string };
+  paths: { config: string; skill?: string; skillZip?: string; skills?: Partial<Record<SkillName, string>>; skillZips?: Partial<Record<SkillName, string>>; manifest: string };
   actions: string[];
   nextSteps: string[];
 }
@@ -37,7 +37,10 @@ export interface ManagedRefreshReport {
 
 /** Internal dependency injection for isolated upgrade, race, and failure tests. */
 export interface SetupDependencies {
+  /** Legacy single-skill fixture. Production setup always installs both bundled skills. */
   source?: string;
+  /** Complete bundle override for isolated multi-skill tests. */
+  sources?: Partial<Record<SkillName, string>>;
   version?: string;
   beforeCommit?: () => Promise<void>;
   beforeWrite?: (path: string, index: number) => Promise<void>;
@@ -49,14 +52,15 @@ type ObjectValue = Record<string, unknown>;
 type Snapshot = { bytes: Buffer; mode: number } | null;
 type Fields = Record<'command' | 'args' | 'type', string>;
 interface Manifest {
-  schemaVersion: 1;
+  schemaVersion: 2;
   client: string;
   version: string;
   options: { cwd: string; local: boolean; mode: string; url?: string; envFile?: string };
   paths: SetupReport['paths'];
   config: { format: 'toml' | 'jsonc'; fields: Fields; blockHash?: string };
-  skill: { files: Record<string, string>; zipHash?: string };
+  skills: Partial<Record<SkillName, SkillOwnership>>;
 }
+interface SkillOwnership { files: Record<string, string>; zipHash?: string }
 
 const startMarker = '# >>> steercards setup managed block >>>';
 const endMarker = '# <<< steercards setup managed block <<<';
@@ -231,17 +235,36 @@ function changedConfiguration(text: string, original: ObjectValue, generatedText
 }
 
 function readManifest(bytes: Buffer, client: string, paths: SetupReport['paths']): Manifest {
-  let value: Manifest;
-  try { value = JSON.parse(bytes.toString('utf8')) as Manifest; }
+  let value: ObjectValue;
+  try { value = JSON.parse(bytes.toString('utf8')) as ObjectValue; }
   catch { throw new Error('Setup manifest is invalid. Review or move it before retrying.'); }
-  if (!object(value) || value.schemaVersion !== 1 || value.client !== client || typeof value.version !== 'string' || !isDeepStrictEqual(value.paths, paths) || !object(value.options) || typeof value.options.local !== 'boolean' || typeof value.options.mode !== 'string' || value.options.cwd !== dirname(dirname(dirname(paths.manifest))) || !object(value.config) || !object(value.config.fields) || !object(value.skill) || !object(value.skill.files)) throw new Error('Setup manifest does not match this installation. Review or move it before retrying.');
+  const invalid = () => new Error('Setup manifest does not match this installation. Review or move it before retrying.');
+  if (!object(value) || ![1, 2].includes(value.schemaVersion as number) || value.client !== client || typeof value.version !== 'string' || !object(value.paths) || !object(value.options) || typeof value.options.local !== 'boolean' || typeof value.options.mode !== 'string' || value.options.cwd !== dirname(dirname(dirname(paths.manifest))) || !object(value.config) || !object(value.config.fields)) throw invalid();
+  const { skills: recordedPaths, skillZips: recordedZips, ...legacyPaths } = value.paths;
+  const { skills: expectedPaths, skillZips: expectedZips, ...expectedLegacy } = paths;
+  if (!isDeepStrictEqual(legacyPaths, expectedLegacy)) throw invalid();
   for (const name of fieldNames) if (typeof value.config.fields[name] !== 'string') throw new Error('Setup manifest has invalid configuration ownership.');
   if (value.config.format !== (client === 'codex' ? 'toml' : 'jsonc') || (client === 'codex' && typeof value.config.blockHash !== 'string')) throw new Error('Setup manifest has invalid configuration ownership.');
-  for (const [path, digest] of Object.entries(value.skill.files)) {
-    if (!path || isAbsolute(path) || path.includes('\\') || path.split('/').some(part => !part || part === '.' || part === '..') || typeof digest !== 'string') throw new Error('Setup manifest has invalid skill ownership.');
+  let ownership: ObjectValue;
+  if (value.schemaVersion === 1) {
+    if (recordedPaths !== undefined || recordedZips !== undefined || !object(value.skill)) throw invalid();
+    ownership = { steercards: value.skill };
+  } else {
+    if (!object(value.skills) || !own(value.skills, 'steercards')) throw invalid();
+    ownership = value.skills;
+    const recorded = client === 'claude-desktop' ? recordedZips : recordedPaths;
+    const expected = client === 'claude-desktop' ? expectedZips : expectedPaths;
+    if (!object(recorded) || (client === 'claude-desktop' ? recordedPaths : recordedZips) !== undefined || !isDeepStrictEqual(Object.keys(recorded).sort(), Object.keys(ownership).sort())) throw invalid();
+    for (const [name, path] of Object.entries(recorded)) if (!skillNames.includes(name as SkillName) || path !== expected?.[name as SkillName]) throw invalid();
+  }
+  for (const [name, skill] of Object.entries(ownership)) {
+    if (!skillNames.includes(name as SkillName) || !object(skill) || !object(skill.files) || !own(skill.files, 'SKILL.md') || (client === 'claude-desktop' && typeof skill.zipHash !== 'string')) throw new Error('Setup manifest has invalid skill ownership.');
+    for (const [path, digest] of Object.entries(skill.files)) {
+      if (!path || isAbsolute(path) || path.includes('\\') || path.split('/').some(part => !part || part === '.' || part === '..') || typeof digest !== 'string') throw new Error('Setup manifest has invalid skill ownership.');
+    }
   }
   if (value.options.url !== undefined && typeof value.options.url !== 'string' || value.options.envFile !== undefined && typeof value.options.envFile !== 'string') throw new Error('Setup manifest has invalid options.');
-  return value;
+  return { ...value, schemaVersion: 2, skills: ownership } as unknown as Manifest;
 }
 
 async function atomicWrite(path: string, data: Buffer, mode: number, ensureDirectory: (path: string) => Promise<void>): Promise<void> {
@@ -254,7 +277,7 @@ async function atomicWrite(path: string, data: Buffer, mode: number, ensureDirec
   } finally { await rm(stage, { force: true }); }
 }
 
-/** Configure MCP and the matching skill together, preserving unrelated client data. */
+/** Configure MCP and both matching skills together, preserving unrelated client data. */
 export async function setup(options: SetupOptions, dependencies: SetupDependencies = {}): Promise<SetupReport> {
   return (await applySetup(options, dependencies, false))!;
 }
@@ -276,6 +299,9 @@ async function applySetup(options: SetupOptions, dependencies: SetupDependencies
   const client = options.client.startsWith('codex') ? 'codex' : options.client;
   const cwd = await canonicalBase(options.cwd ?? process.cwd());
   const version = dependencies.version ?? packageInfo.version;
+  const sources = dependencies.sources ?? (dependencies.source ? { steercards: dependencies.source } : skillRoots);
+  if (!sources.steercards || Object.keys(sources).some(name => !skillNames.includes(name as SkillName))) throw new Error('Setup sources must include steercards and only supported skill names.');
+  const managedNames = skillNames.filter(name => sources[name] !== undefined);
   const toml = client === 'codex';
   let configPath: string;
   let skillPath: string | undefined;
@@ -292,7 +318,10 @@ async function applySetup(options: SetupOptions, dependencies: SetupDependencies
     configPath = client === 'claude-code' ? join(cwd, '.mcp.json') : join(cwd, directory, toml ? 'config.toml' : 'mcp.json');
     skillPath = join(cwd, client === 'codex' ? '.agents' : directory, 'skills', 'steercards');
   }
-  const paths: SetupReport['paths'] = { config: configPath, ...(skillPath ? { skill: skillPath } : { skillZip: zipPath }), manifest: join(cwd, '.steercards', 'setup', `${client}.json`) };
+  const skillPaths = skillPath ? Object.fromEntries(skillNames.map(name => [name, join(dirname(skillPath!), name)])) as Record<SkillName, string> : undefined;
+  const zipPaths = zipPath ? Object.fromEntries(skillNames.map(name => [name, join(dirname(zipPath!), `${name}-skill.zip`)])) as Record<SkillName, string> : undefined;
+  const expectedPaths: SetupReport['paths'] = { config: configPath, ...(skillPath ? { skill: skillPath, skills: skillPaths } : { skillZip: zipPath, skillZips: zipPaths }), manifest: join(cwd, '.steercards', 'setup', `${client}.json`) };
+  const paths: SetupReport['paths'] = { ...expectedPaths, ...(skillPaths ? { skills: Object.fromEntries(managedNames.map(name => [name, skillPaths[name]])) } : { skillZips: Object.fromEntries(managedNames.map(name => [name, zipPaths![name]])) }) };
   const lockPath = `${configPath}.steercards-setup.lock`;
   const baselines = new Map<string, Snapshot>();
   const remember = async (path: string): Promise<Snapshot> => {
@@ -301,8 +330,9 @@ async function applySetup(options: SetupOptions, dependencies: SetupDependencies
   };
   await noSymlink(lockPath);
   const manifestBefore = await remember(paths.manifest);
-  const previous = manifestBefore ? readManifest(manifestBefore.bytes, client, paths) : undefined;
+  const previous = manifestBefore ? readManifest(manifestBefore.bytes, client, expectedPaths) : undefined;
   if (startup && (!previous || previous.options.local || options.local || !newerStableVersion(version, previous.version))) return undefined;
+  if (previous && Object.keys(previous.skills).some(name => !managedNames.includes(name as SkillName))) throw new Error('Setup sources omit a previously managed skill. No files were changed.');
   const effective = {
     cwd,
     local: options.local ?? previous?.options.local ?? false,
@@ -320,41 +350,50 @@ async function applySetup(options: SetupOptions, dependencies: SetupDependencies
   // serve invocation cannot migrate a legacy pinned command by finding a manifest.
   if (startup && !isDeepStrictEqual(fields(serverFrom(original, toml ? 'mcp_servers' : 'mcpServers') ?? {}), fields(desired))) throw new Error('Startup command does not match the managed automatic-update command.');
   const configAfter = changedConfiguration(configText, original, generatedText, desired, toml, previous);
-  const files = await sourceFiles(await canonicalBase(dependencies.source ?? skillRoot));
-  if (!files['SKILL.md']) throw new Error('Skill source is missing SKILL.md.');
-  const fileHashes = Object.fromEntries(Object.entries(files).map(([name, bytes]) => [name, hash(bytes)]));
   const plan = new Map<string, Buffer | null>();
   plan.set(configPath, Buffer.from(configAfter.text));
-  if (skillPath) {
-    const exists = await checkSkillTree(skillPath);
-    if (previous) {
-      for (const [name, digest] of Object.entries(previous.skill.files)) {
-        const before = await remember(join(skillPath, name));
-        const incoming = files[name];
-        // A manual merge may already contain the exact incoming bytes while the
-        // manifest still records the previous release. Accept only that match.
-        if (!before || (hash(before.bytes) !== digest && (!incoming || !before.bytes.equals(incoming)))) throw new Error(`Managed skill file was changed or removed: ${name}. Back up your edits, restore missing files and compare with this package's bundled skill. Rerun setup when the managed file exactly matches the incoming bundle; distinct local edits remain protected. No files were changed.`);
-        if (!own(files, name)) plan.set(join(skillPath, name), null);
+  const skills: Manifest['skills'] = {};
+  // Validate every bundle and destination before creating any files or redeeming
+  // a one-use setup code. Both skills participate in the same rollback plan.
+  for (const skillName of managedNames) {
+    const files = await sourceFiles(await canonicalBase(sources[skillName]!));
+    if (!files['SKILL.md']) throw new Error(`Skill source is missing SKILL.md: ${skillName}.`);
+    const fileHashes = Object.fromEntries(Object.entries(files).map(([name, bytes]) => [name, hash(bytes)]));
+    const previousSkill = previous?.skills[skillName];
+    const targetDirectory = skillPaths?.[skillName];
+    if (targetDirectory) {
+      const exists = await checkSkillTree(targetDirectory);
+      if (previousSkill) {
+        for (const [name, digest] of Object.entries(previousSkill.files)) {
+          const before = await remember(join(targetDirectory, name));
+          const incoming = files[name];
+          // A manual merge may already contain the exact incoming bytes while
+          // the manifest still records the previous release.
+          if (!before || (hash(before.bytes) !== digest && (!incoming || !before.bytes.equals(incoming)))) throw new Error(`Managed skill file was changed or removed: ${skillName}/${name}. Back up your edits, restore missing files and compare with this package's bundled skill. Rerun setup when the managed file exactly matches the incoming bundle; distinct local edits remain protected. No files were changed.`);
+          if (!own(files, name)) plan.set(join(targetDirectory, name), null);
+        }
+      }
+      for (const [name, bytes] of Object.entries(files)) {
+        const target = join(targetDirectory, name);
+        const before = await remember(target);
+        if (before && (!previousSkill || !own(previousSkill.files, name)) && !before.bytes.equals(bytes)) throw new Error(`An unmanaged skill file differs: ${skillName}/${name}. Review and move the skill directory before retrying; no files were changed.`);
+        if (exists && !previousSkill && !before) throw new Error(`Existing skill is incomplete: ${skillName}/${name}. Review and move the skill directory before retrying; no files were changed.`);
+        plan.set(target, bytes);
       }
     }
-    for (const [name, bytes] of Object.entries(files)) {
-      const target = join(skillPath, name);
-      const before = await remember(target);
-      if (before && (!previous || !own(previous.skill.files, name)) && !before.bytes.equals(bytes)) throw new Error(`An unmanaged skill file differs: ${name}. Review and move the skill directory before retrying; no files were changed.`);
-      if (exists && !previous && !before) throw new Error(`Existing skill is incomplete: ${name}. Review and move the skill directory before retrying; no files were changed.`);
-      plan.set(target, bytes);
+    let zipHash: string | undefined;
+    const targetZip = zipPaths?.[skillName];
+    if (targetZip) {
+      const entries = Object.fromEntries(Object.entries(files).map(([name, bytes]) => [`${skillName}/${name}`, [bytes, { mtime: new Date(1980, 0, 1) }] as [Uint8Array, { mtime: Date }]]));
+      const zip = Buffer.from(zipSync(entries));
+      zipHash = hash(zip);
+      const before = await remember(targetZip);
+      if (previousSkill ? !before || hash(before.bytes) !== previousSkill.zipHash : before && !before.bytes.equals(zip)) throw new Error(`The existing skill ZIP differs from the managed version: ${skillName}. Review and move it before retrying; no files were changed.`);
+      plan.set(targetZip, zip);
     }
+    skills[skillName] = { files: fileHashes, ...(zipHash ? { zipHash } : {}) };
   }
-  let zipHash: string | undefined;
-  if (zipPath) {
-    const entries = Object.fromEntries(Object.entries(files).map(([name, bytes]) => [`steercards/${name}`, [bytes, { mtime: new Date(1980, 0, 1) }] as [Uint8Array, { mtime: Date }]]));
-    const zip = Buffer.from(zipSync(entries));
-    zipHash = hash(zip);
-    const before = await remember(zipPath);
-    if (previous ? !before || hash(before.bytes) !== previous.skill.zipHash : before && !before.bytes.equals(zip)) throw new Error('The existing skill ZIP differs from the managed version. Review and move it before retrying; no files were changed.');
-    plan.set(zipPath, zip);
-  }
-  const manifest: Manifest = { schemaVersion: 1, client, version, options: effective, paths, config: { format: toml ? 'toml' : 'jsonc', fields: fields(desired), ...(configAfter.blockHash ? { blockHash: configAfter.blockHash } : {}) }, skill: { files: fileHashes, ...(zipHash ? { zipHash } : {}) } };
+  const manifest: Manifest = { schemaVersion: 2, client, version, options: effective, paths, config: { format: toml ? 'toml' : 'jsonc', fields: fields(desired), ...(configAfter.blockHash ? { blockHash: configAfter.blockHash } : {}) }, skills };
   plan.set(paths.manifest, Buffer.from(JSON.stringify(manifest, null, 2) + '\n'));
   for (const [path, bytes] of plan) {
     const before = await remember(path);
@@ -363,8 +402,8 @@ async function applySetup(options: SetupOptions, dependencies: SetupDependencies
   }
   const actions = [...plan].map(([path, bytes]) => `${bytes === null ? 'remove' : baselines.get(path) ? 'update' : 'create'} ${path}`);
   const nextSteps = client === 'claude-desktop'
-    ? [`Restart Claude Desktop to load the MCP server.`, `Upload ${zipPath} in Claude's skill settings. Repeat the upload after a skill update.`, 'Set STEERCARDS_AGENT_KEY in the project .env or the referenced env file before using MCP.']
-    : ['Restart or reload your client to load the MCP server and skill.', 'Set STEERCARDS_AGENT_KEY in the project .env or the referenced env file before using MCP.'];
+    ? [`Restart Claude Desktop to load the MCP server.`, `Upload ${managedNames.map(name => zipPaths![name]).join(' and ')} separately in Claude's skill settings. Repeat both uploads after a skill update.`, 'Set STEERCARDS_AGENT_KEY in the project .env or the referenced env file before using MCP.']
+    : ['Restart or reload your client to load the MCP server and both skills.', 'Set STEERCARDS_AGENT_KEY in the project .env or the referenced env file before using MCP.'];
   const report: SetupReport = { client, version, status: options.dryRun ? 'dry-run' : plan.size ? previous ? 'updated' : 'installed' : 'unchanged', paths, actions, nextSteps };
   if (options.dryRun) { await dependencies.afterPreflight?.({ cwd, envFile: effective.envFile, dryRun: true }); return report; }
   if (!plan.size && !dependencies.afterPreflight) return report;
@@ -396,7 +435,7 @@ async function applySetup(options: SetupOptions, dependencies: SetupDependencies
       if (!sameSnapshot(before, now)) throw new Error('A setup destination changed during preflight. Retry after reviewing the client configuration and skill; no files were changed.');
       if (startup && plan.has(path) && now && (now.mode & 0o200) === 0) throw new Error('A managed startup destination became read-only.');
     }
-    if (skillPath) await checkSkillTree(skillPath);
+    for (const name of managedNames) if (skillPaths) await checkSkillTree(skillPaths[name]);
     if (dependencies.afterPreflight) {
       // Exercise destination directories before a one-use credential is consumed.
       for (const parent of new Set([...plan.keys()].map(path => dirname(path)))) {

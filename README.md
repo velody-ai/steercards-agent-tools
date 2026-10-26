@@ -69,6 +69,16 @@ node -- /absolute/path/agent-tools/dist/cli.js doctor --cwd /absolute/path/proje
 
 `doctor`는 키 값을 출력하지 않습니다. `--connect`를 추가하면 원격 서버에 연결하고 워크스페이스 목록을 조회하는 읽기 전용 검사를 수행합니다. 생략하면 로컬 설정만 확인합니다.
 
+## 대화로 워크플로우 만들기
+
+`setup`은 도구 사용용 `steercards`와 업무 방식 설정용 `steercards-workflow` 스킬을 함께 설치합니다. 연결과 클라이언트 재로딩을 마친 뒤 **“스티어카드 워크플로우 만들자”**라고 요청하세요. 기존 설정을 바꾸려면 **“스티어카드 워크플로우 수정하자”**라고 요청합니다. 설치만으로 인터뷰나 개발 작업이 시작되지는 않습니다.
+
+스킬은 기존 프로젝트 지침·에이전트·보드·프로필을 먼저 확인하고, 주요 개발 업무, 업무 접수, 역할 구성, 완료 기준, 자율 진행 범위와 사전 논의 수준을 한 번에 1~3개씩 묻습니다. 필요한 경우 역할 재사용·신규 생성·병렬 작업, 질문·차단·진행 공유 규칙을 이어서 정합니다. 모델 추천을 선택하면 현재 환경에서 지원을 확인한 모델·추론 강도만 제안하고, 거절하면 기존 설정을 유지합니다.
+
+워크플로우 초안과 실제 변경할 설정을 한 번에 확인받은 뒤 적용합니다. 기본 문서는 프로젝트의 `docs/steercards-workflow.md`이며 기존에 연결된 업무 방식 문서가 있으면 그것을 갱신합니다. `AGENTS.md`와 필요한 클라이언트 지침 진입점에는 같은 문서를 읽으라는 참조를 추가합니다. 선택한 프로젝트 에이전트 역할과 Steercards 프로필도 준비하되, 프로필 등록과 실제 에이전트 실행 준비는 각각 검증합니다. 지원하지 않거나 권한이 없는 설정은 수동·대기 항목으로 보고합니다.
+
+사용자 워크플로우, `AGENTS.md` 참조와 프로젝트 에이전트 설정은 **패키지 자동 갱신 대상이 아닙니다.** 패키지는 설치한 두 스킬 파일만 관리합니다. 병합·배포·DB 변경 권한을 다른 프로젝트에서 복사하지 않으며, 첫 개발 작업이나 백그라운드 실행은 별도로 사용자가 선택해야 합니다.
+
 ## npm 설치와 업데이트
 
 처음 설치하거나 이전 버전 고정 설치를 자동 갱신 방식으로 전환할 때 실행합니다.
@@ -136,12 +146,12 @@ TTY에서 `--client`를 생략하면 사용할 클라이언트를 선택합니�
 
 | 클라이언트 | `--client` | MCP 설정과 Skill 설치 위치 |
 | --- | --- | --- |
-| Codex 앱·CLI | `codex`, `codex-app`, `codex-cli` | 프로젝트 `.codex/config.toml`과 `.agents/skills/steercards/`. 프로젝트 설정은 신뢰한 프로젝트에서 사용합니다. [공식 MCP 설정](https://developers.openai.com/codex/mcp), [Skills](https://developers.openai.com/codex/skills) |
-| Claude Code | `claude-code` | 프로젝트 `.mcp.json`과 `.claude/skills/steercards/`. [공식 MCP 설정](https://code.claude.com/docs/en/mcp), [Skills](https://code.claude.com/docs/en/skills) |
-| Cursor | `cursor` | 프로젝트 `.cursor/mcp.json`과 `.cursor/skills/steercards/`. [공식 MCP 설정](https://cursor.com/docs/mcp), [Skills](https://cursor.com/docs/skills) |
-| Claude Desktop | `claude-desktop` | 아래 OS별 사용자 MCP 설정과 프로젝트 `.steercards/steercards-skill.zip`. [로컬 MCP 연결 안내](https://modelcontextprotocol.io/docs/develop/connect-local-servers) |
+| Codex 앱·CLI | `codex`, `codex-app`, `codex-cli` | 프로젝트 `.codex/config.toml`과 `.agents/skills/` 아래 두 스킬. 프로젝트 설정은 신뢰한 프로젝트에서 사용합니다. [공식 MCP 설정](https://developers.openai.com/codex/mcp), [Skills](https://developers.openai.com/codex/skills) |
+| Claude Code | `claude-code` | 프로젝트 `.mcp.json`과 `.claude/skills/` 아래 두 스킬. [공식 MCP 설정](https://code.claude.com/docs/en/mcp), [Skills](https://code.claude.com/docs/en/skills) |
+| Cursor | `cursor` | 프로젝트 `.cursor/mcp.json`과 `.cursor/skills/` 아래 두 스킬. [공식 MCP 설정](https://cursor.com/docs/mcp), [Skills](https://cursor.com/docs/skills) |
+| Claude Desktop | `claude-desktop` | 아래 OS별 사용자 MCP 설정과 프로젝트 `.steercards/` 아래 스킬별 ZIP 두 개. [로컬 MCP 연결 안내](https://modelcontextprotocol.io/docs/develop/connect-local-servers) |
 
-Claude Desktop 자동 설치는 macOS와 Windows를 지원합니다. MCP 설정은 macOS의 `~/Library/Application Support/Claude/claude_desktop_config.json`, Windows의 `%APPDATA%\Claude\claude_desktop_config.json`에 병합합니다. Desktop은 사용자 설정이므로 선택한 프로젝트의 `--cwd`가 연결 대상이 됩니다. 생성한 ZIP은 앱의 Skill 업로드 UI에서 직접 추가해야 하며 업데이트 후에는 새 ZIP을 다시 업로드합니다. 계정·앱의 업로드 지원 여부는 [Claude 공식 Skill 안내](https://support.claude.com/en/articles/12512180-use-skills-in-claude)를 확인하세요.
+Claude Desktop 자동 설치는 macOS와 Windows를 지원합니다. MCP 설정은 macOS의 `~/Library/Application Support/Claude/claude_desktop_config.json`, Windows의 `%APPDATA%\Claude\claude_desktop_config.json`에 병합합니다. Desktop은 사용자 설정이므로 선택한 프로젝트의 `--cwd`가 연결 대상이 됩니다. `.steercards/steercards-skill.zip`과 `.steercards/steercards-workflow-skill.zip`을 앱의 Skill 업로드 UI에서 각각 추가하고 업데이트 후 두 ZIP을 다시 업로드합니다. 로컬 파일 접근이나 네이티브 에이전트 설정을 지원하지 않으면 워크플로우 파일 산출과 수동 적용 단계를 제공합니다. 계정·앱의 업로드 지원 여부는 [Claude 공식 Skill 안내](https://support.claude.com/en/articles/12512180-use-skills-in-claude)를 확인하세요.
 
 소스에서 빌드한 경우 `--local`을 사용하세요. 실제 Node 실행 파일과 `dist/cli.js`의 절대 경로를 MCP 설정에 넣으므로 해당 설치 디렉터리를 유지해야 합니다. Windows GUI에서도 실행 경로를 확실히 고정하는 이 방식을 권장합니다. `--local`을 생략한 설정은 `npx`를 사용하므로 클라이언트에서 `npx`를 실행할 수 있어야 합니다.
 
@@ -159,6 +169,8 @@ steercards setup --client cursor --cwd /absolute/path/project --dry-run
 ```
 
 `setup`은 기존 설정의 Steercards MCP 항목만 병합하고 다른 서버·설정·주석과 사용자 파일은 보존합니다. `.steercards/setup/*.json`에 설치한 버전·옵션과 관리 파일의 해시를 기록하여 다음 업데이트에서 비교합니다. 관리 기록 없이 이전 `config`·`skill install` 명령으로 설치한 경우에도 현재 생성할 MCP 관리 필드와 Skill 파일이 같으면 관리 대상으로 등록합니다. Codex TOML은 이전 `config`의 정확한 출력 형식이어야 합니다. 그 외의 기존 충돌 항목이나 사용자가 수정한 관리 설정·Skill이 있으면 파일을 쓰기 전에 중단합니다. 충돌 시 수정 내용을 별도로 보관하고 기존 항목과 설치 기록을 검토한 뒤 수동 병합하거나 다시 설치하세요. 일반적인 쓰기 실패는 이전 파일로 복구하지만 전원 차단까지 포함한 원자적 저장을 보장하지 않습니다.
+
+설치 결과의 기존 `paths.skill`·`paths.skillZip`은 `steercards` 경로를 유지합니다. `paths.skills` 또는 Desktop의 `paths.skillZips`에는 `steercards`와 `steercards-workflow`의 이름별 경로를 반환합니다. 단일 스킬 설치 기록(schemaVersion 1)은 갱신 시 두 스킬 ownership을 담은 schemaVersion 2로 전환하며, 새 스킬의 충돌도 파일 저장·일회용 코드 교환 전에 검사합니다.
 
 `Managed skill file was changed or removed`가 나오면 로컬 수정본을 먼저 백업하고 최신 패키지의 `skills/steercards/`와 직접 비교·병합하세요. 기존 설치 해시와 달라도 현재 관리 파일이 새 배포본의 같은 파일과 **byte 단위로 완전히 같으면**, 이미 병합된 파일로 인정하므로 `setup`을 다시 실행할 수 있습니다. 나머지 관리 파일은 기존 보호 검사 후 갱신하며 설정·키는 보존합니다. 새 배포본과 다른 고유 사용자 수정이나 누락된 관리 파일은 계속 충돌로 보호합니다. 사용자 고유 내용까지 자동 병합하지 않으며, 설치 기록을 삭제하거나 해시를 바꿔 강제 적용하지 마세요.
 
@@ -250,10 +262,12 @@ steercards config cursor --cwd /absolute/path/project --local
 steercards skill install --client codex --cwd /absolute/path/project
 steercards skill install --client claude-code --cwd /absolute/path/project
 steercards skill install --client cursor --cwd /absolute/path/project
+steercards skill install --client codex --skill steercards-workflow --cwd /absolute/path/project
 steercards skill export --output /absolute/path/steercards-skill.zip
+steercards skill export --skill steercards-workflow --output /absolute/path/steercards-workflow-skill.zip
 ```
 
-`config`는 설정 조각만 출력하며 클라이언트 설정을 수정하지 않습니다. 출력 내용을 기존 파일에 수동 병합해야 합니다. `skill install --global`은 사용자 홈 아래의 해당 클라이언트 Skill 디렉터리에 개별 설치합니다. 개별 Skill 설치는 같은 내용이면 성공하고 변경된 기존 디렉터리는 덮어쓰지 않습니다. 이 명령들은 MCP·Skill을 함께 갱신하거나 `setup`의 관리 기록을 만들지 않습니다.
+`config`는 설정 조각만 출력하며 클라이언트 설정을 수정하지 않습니다. 출력 내용을 기존 파일에 수동 병합해야 합니다. 개별 `skill install`과 `skill export`는 `--skill` 생략 시 기존 `steercards`를 선택하고 `--skill steercards-workflow`로 워크플로우 스킬을 선택합니다. `skill install --global`은 사용자 홈 아래의 해당 클라이언트 Skill 디렉터리에 선택한 스킬을 설치합니다. 개별 Skill 설치는 같은 내용이면 성공하고 변경된 기존 디렉터리는 덮어쓰지 않습니다. 이 명령들은 MCP·Skill을 함께 갱신하거나 `setup`의 관리 기록을 만들지 않습니다.
 
 Skill은 도구 탐색 순서와 작업 요령을 제공합니다. `compact` 모드에서는 Skill을 업로드하지 않아도 `steercards_get_guide` 도구로 가이드를 읽을 수 있습니다. `full` 모드는 이 도구를 추가하지 않으며, `steercards://guide/overview`와 주제별 MCP resource를 제공합니다. Claude Desktop에서 `full` 모드를 사용할 때는 Skill ZIP을 업로드하거나, 클라이언트가 resource 읽기를 지원하는 경우 해당 resource로 가이드를 읽으세요.
 

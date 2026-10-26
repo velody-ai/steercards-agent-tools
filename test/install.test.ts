@@ -84,3 +84,20 @@ test('Desktop ZIP contains complete portable skill and never overwrites a file',
   assert.equal(strFromU8(files['steercards/references/work.md']), 'Work reference');
   await assert.rejects(exportSkill(path, source), /EEXIST/);
 });
+
+test('workflow skill selection isolates its install and ZIP while the default stays compatible', async t => {
+  const { root, source } = await fixture(t);
+  await writeFile(join(source, 'SKILL.md'), '---\nname: steercards-workflow\ndescription: Set up a workflow\n---\nWorkflow');
+  const installed = await installSkill({ client: 'codex', cwd: root, source, skill: 'steercards-workflow' });
+  assert.equal(installed.path, join(root, '.agents', 'skills', 'steercards-workflow'));
+  assert.equal((await installSkill({ client: 'codex', cwd: root, source, skill: 'steercards-workflow' })).status, 'unchanged');
+  const archive = join(root, 'workflow.zip');
+  await exportSkill(archive, source, 'steercards-workflow');
+  const entries = unzipSync(await readFile(archive));
+  assert.match(strFromU8(entries['steercards-workflow/SKILL.md']), /name: steercards-workflow/);
+  assert.equal(entries['steercards/SKILL.md'], undefined);
+  for (const skill of ['', '../escape', 'unknown']) {
+    await assert.rejects(installSkill({ client: 'codex', cwd: root, source, skill }), /Unknown skill/);
+    await assert.rejects(exportSkill(join(root, 'invalid.zip'), source, skill), /Unknown skill/);
+  }
+});

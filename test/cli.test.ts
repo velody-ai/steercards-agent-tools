@@ -5,6 +5,7 @@ import { mkdtemp, realpath, writeFile, readFile, readdir, rm } from 'node:fs/pro
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { unzipSync, strFromU8 } from 'fflate';
 const root = fileURLToPath(new URL('../', import.meta.url));
 function cli(args: string[], input?: string) {
   const env = { ...process.env };
@@ -110,6 +111,8 @@ test('setup installs MCP and skill with one command, preserves dotenv, and rerun
   assert.ok(report.paths.config.endsWith('config.toml'));
   assert.ok((await readFile(report.paths.config, 'utf8')).includes('mcp_servers.steercards'));
   assert.ok((await readFile(join(report.paths.skill, 'SKILL.md'), 'utf8')).includes('name: steercards'));
+  assert.equal(report.paths.skills.steercards, report.paths.skill);
+  assert.match(await readFile(join(report.paths.skills['steercards-workflow'], 'SKILL.md'), 'utf8'), /name: steercards-workflow/);
   assert.equal(await readFile(join(cwd, '.env'), 'utf8'), dotenv);
   assert.ok(!installed.stdout.includes('fixture-setup-must-not-read-or-print'));
   const again = cli(['setup', '--client', 'codex-cli', '--cwd', cwd]);
@@ -119,6 +122,32 @@ test('setup installs MCP and skill with one command, preserves dotenv, and rerun
   assert.equal(switched.status, 0, switched.stderr);
   assert.equal(JSON.parse(switched.stdout).status, 'updated');
   assert.match(await readFile(report.paths.config, 'utf8'), /command = \"npx\"/);
+});
+
+test('skill install and export select onboarding explicitly and reject unknown or misplaced selection', async t => {
+  const cwd = await realpath(await mkdtemp(join(tmpdir(), 'steercards-workflow-cli-')));
+  t.after(() => rm(cwd, { recursive: true, force: true }));
+  const installed = cli(['skill', 'install', '--client', 'cursor', '--skill', 'steercards-workflow', '--cwd', cwd]);
+  assert.equal(installed.status, 0, installed.stderr);
+  const path = JSON.parse(installed.stdout).path;
+  assert.equal(path, join(cwd, '.cursor', 'skills', 'steercards-workflow'));
+  assert.match(await readFile(join(path, 'SKILL.md'), 'utf8'), /name: steercards-workflow/);
+  const exported = cli(['skill', 'export', '--skill', 'steercards-workflow', '--output', 'workflow.zip', '--cwd', cwd]);
+  assert.equal(exported.status, 0, exported.stderr);
+  const entries = unzipSync(await readFile(JSON.parse(exported.stdout).path));
+  assert.match(strFromU8(entries['steercards-workflow/SKILL.md']), /name: steercards-workflow/);
+  assert.equal(entries['steercards/SKILL.md'], undefined);
+  for (const args of [
+    ['skill', 'install', '--client', 'codex', '--skill', '../escape'],
+    ['skill', 'export', '--output', 'invalid.zip', '--skill', 'unknown'],
+    ['setup', '--client', 'cursor', '--skill', 'steercards-workflow'],
+    ['serve', '--skill', 'steercards-workflow'],
+  ]) {
+    const result = cli([...args, '--cwd', cwd]);
+    assert.equal(result.status, 1);
+    assert.match(JSON.parse(result.stderr).error, /Unknown skill|--skill is only supported/);
+  }
+  assert.ok(!(await readdir(cwd)).includes('invalid.zip'));
 });
 
 test('setup preview and noninteractive selection failures never write files', async t => {
