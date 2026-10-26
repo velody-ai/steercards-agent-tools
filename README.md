@@ -226,7 +226,7 @@ steercards explore --workspace 123 "sed -n '20,40p' /projects/7/boards/19/cards/
 steercards explore --workspace 123 --board 19 --status 'In progress' --status 456 --archived active --include-relations 'rg -n -i -C 2 -g card.md "session|login" /projects/7/boards/19/cards'
 ```
 
-출처 `sources`의 URL·실제 상태 속성과 카드별 `matches`의 문맥 묶음을 활용하면 추가 본문 조회 없이 목록을 작성할 수 있습니다. `matches[].snippets`는 시작·종료 줄, 실제 일치 줄, `outputStart`/`outputEnd`로 원본 `output`을 참조하며 텍스트를 복제하지 않습니다. offset은 JavaScript `String.slice`의 UTF-16 기준입니다. 선택 관계 요약은 부모·제한된 자식 목록과 `childCount`/`childrenComplete`를 포함합니다. 같은 카드는 안정적인 ID/현재 키로 합치고, 관련 이유·근거 줄·실제 검색 범위와 한계를 보고합니다. 의미 검색이나 모든 카드 검색을 보장하는 기능은 아닙니다.
+출처 `sources`의 URL·실제 상태 속성과 카드별 `matches`의 문맥 묶음을 활용하면 추가 본문 조회 없이 목록을 작성할 수 있습니다. `matches[].snippets`는 시작·종료 줄, 실제 일치 줄, `outputStart`/`outputEnd`로 원본 `output`을 참조하며 텍스트를 복제하지 않습니다. offset은 JavaScript `String.slice`의 UTF-16 기준입니다. 상태 속성은 최대 20개로 제한되므로 `statusesComplete:false`이면 추가 상태가 생략될 수 있습니다. 선택 관계 요약은 부모·최대 10개의 접근 가능한 자식과 `childCount`/`childrenComplete`를 포함하며, 개수도 접근 가능한 관계만 집계합니다. 같은 카드는 안정적인 ID/현재 키로 합치고, 관련 이유·근거 줄·실제 검색 범위와 한계를 보고합니다. 의미 검색이나 모든 카드 검색을 보장하는 기능은 아닙니다.
 
 명령 전체를 **하나의 따옴표 인자**로 전달하세요. `ls`, `find`, `rg`, `grep`, `cat`, `sed -n`, `head`, `tail`의 제한된 문법만 지원하며 정확한 옵션은 `help`를 따릅니다. 파이프·리다이렉션·확장·명령 연결·파일 쓰기는 지원하지 않습니다.
 
