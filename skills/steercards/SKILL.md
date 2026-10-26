@@ -11,11 +11,11 @@ Use the connected Steercards toolkit MCP or its `steercards` CLI. Authentication
 
 For actual work on a card, use its agent-status badge throughout the attempt. This is part of the default work flow, even when claims or run tracking are not needed. Discover and describe `set_agent_status` / `clear_agent_status` for the current inputs.
 
-1. Before starting the work, after acquiring any required claim, set `status:"working"` with your connected `agentProfileId` when using a registered profile. Refresh it every **5 minutes**, before the **10-minute** stale threshold shows no response. A short `label` can describe the current step.
+1. Check current card ownership and your connected profile before starting the work. After acquiring any required claim, set `status:"working"` with your connected `agentProfileId` when using a registered profile. Refresh it every **5 minutes**, before the **10-minute** stale threshold shows no response. A short `label` can describe the current step.
 2. When waiting for a person's answer, set `status:"waiting_for_input"` and supply the actual `question`. For a blocking error, set `status:"error"`. Keep the waiting/error badge while awaiting the answer or resolution, even if your turn ends. Switch back to `working` when you resume.
-3. Clear the badge with `clear_agent_status` before completing, abandoning or handing off the work. For claim-managed cards, pass the current `claimFence` to status writes and clear **before** releasing or transferring the claim, while the fence is valid. If the fence is lost, stop writing; never clear another owner's status.
+3. After the final authorized writes for your attempt, clear the badge with `clear_agent_status` before completing, abandoning or handing off the work. For claim-managed cards, pass the current `claimFence` to status writes and clear **before** releasing or transferring the claim, while the fence is valid. If the fence is lost, stop writing; never clear another owner's status.
 
-Read-only lookups and assignment alone do not create a badge. Do not unconditionally clear in a `finally` block: a pending answer or unresolved blocker is still waiting work. The badge does not change the card's business status, renew a claim lease or send a run heartbeat; maintain those separately when used. See [claims-runs](references/claims-runs.md) for ownership and [collaboration](references/collaboration.md) for questions and human checks.
+Read-only lookups and assignment alone do not create a badge. Do not unconditionally clear in a `finally` block: a pending answer or unresolved blocker is still waiting work. If authorization or connection fails, report that the status could not be saved; do not bypass a denial by switching keys/profiles or report success. The badge does not change the card's business status, renew a claim lease or send a run heartbeat; maintain those separately when used. See [claims-runs](references/claims-runs.md) for ownership and [collaboration](references/collaboration.md) for questions and human checks.
 
 ## Connecting from an installation prompt
 
@@ -32,6 +32,8 @@ If credentials were saved but installation or doctor failed, preserve `.env` and
 Npm setup uses `@latest` for the next MCP process start, subject to npm's cache/network policy. A newer stable runtime refreshes only an existing matching setup-managed configuration and Skill, with hashes, locks and rollback protecting user changes. A blocked local refresh emits a safe stderr notice and continues MCP startup; npx download failure occurs before this protection. Do not delete credentials or overwrite edited files to force an update.
 
 Older pinned MCP commands need one latest `setup` run and reconnect to enable this flow. Already loaded Skill instructions require a new session/reload. Raw config snippets and individual/global Skill installs are not automatically adopted; `--local` remains manual. Desktop's generated ZIP can update, but uploading it to the app remains manual.
+
+For a managed Skill conflict, first back up local edits, then compare and manually merge with the latest package's bundled Skill. Setup accepts an already-merged managed file only when its bytes exactly match the incoming bundle; distinct custom content and missing files still block the update. Preserve custom content while reviewing the merge. Do not delete the setup manifest, change its hashes or force an overwrite to bypass that protection.
 
 ## Discover only what the task needs
 

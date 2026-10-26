@@ -330,7 +330,10 @@ async function applySetup(options: SetupOptions, dependencies: SetupDependencies
     if (previous) {
       for (const [name, digest] of Object.entries(previous.skill.files)) {
         const before = await remember(join(skillPath, name));
-        if (!before || hash(before.bytes) !== digest) throw new Error(`Managed skill file was changed or removed: ${name}. Restore it or move the skill directory before retrying; no files were changed.`);
+        const incoming = files[name];
+        // A manual merge may already contain the exact incoming bytes while the
+        // manifest still records the previous release. Accept only that match.
+        if (!before || (hash(before.bytes) !== digest && (!incoming || !before.bytes.equals(incoming)))) throw new Error(`Managed skill file was changed or removed: ${name}. Back up your edits, restore missing files and compare with this package's bundled skill. Rerun setup when the managed file exactly matches the incoming bundle; distinct local edits remain protected. No files were changed.`);
         if (!own(files, name)) plan.set(join(skillPath, name), null);
       }
     }
