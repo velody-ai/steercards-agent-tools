@@ -49,9 +49,9 @@ Verified locally on macOS / Node 22.19.0: strict type checking and build, all 76
 - The connection deadline races completion and cancels both HTTP and SDK requests. Stalled response headers and stalled JSON error bodies return within the test deadline and disconnect the actual socket; the env key survives. HTTP 202 without a later initialize/list/call result also cancels SDK request timers, and the packed suite confirms the real processes exit after 15 seconds. Success performs one read-only connection check, with no duplicate doctor.
 - Packed contents were inspected: compiled code, Skill and public documentation only. No production key/code, native client UI or public registry was used. Remote matrix CI, release provenance and independent public-registry QA remain separate evidence.
 
-## Card directory exploration — next patch candidate (SC-635)
+## Card directory exploration — 0.2.0 candidate (SC-635)
 
-Verified locally on macOS / Node 22.19.0 / npm 10.9.3: strict type checking, build, all 77 source tests, packed tarball checks (9 passed, 1 Windows-only skip), Skill validation and `git diff --check` passed. The version bump is pending the preceding SC-634 release sequence.
+Verified locally on macOS / Node 22.19.0 / npm 10.9.3: strict type checking, build, all 77 source tests, packed tarball checks (9 passed, 1 Windows-only skip), Skill validation and `git diff --check` passed. The packed CLI, generated MCP launchers and HTTP client handshake all match package version 0.2.0.
 
 - `explore --workspace ID COMMAND` forwards the exact single command argument to upstream `explore_cards`, with optional opaque cursor and maxChars. Invalid workspace IDs (including exponent/fraction/unsafe integers), empty commands/cursors, out-of-range page sizes, extra positionals and conflicting flags are rejected before credentials or network access.
 - A fresh tarball installation runs the real CLI against an authenticated local HTTP MCP fixture. Empty incomplete scan pages, explicit continuation, source metadata, complete no-match results and product errors preserve the full MCP envelope. Simulated `exitCode:1` with product `ok:true` exits 0; product errors exit 1; every invocation calls upstream once.

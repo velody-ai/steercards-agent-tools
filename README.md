@@ -190,7 +190,7 @@ steercards call <tool-name> --stdin --cwd /absolute/path/project < arguments.jso
 
 ## 카드 본문을 디렉터리처럼 탐색
 
-`explore`는 선택한 워크스페이스의 카드 본문·댓글을 가상 파일로 읽고 검색합니다. 실제 셸을 실행하거나 벡터 검색을 사용하지 않습니다. 원격 `explore_cards`를 먼저 조회하므로 서버가 해당 도구를 제공해야 합니다.
+`explore`는 선택한 워크스페이스의 활성·보관 카드 본문과 댓글을 가상 파일로 읽고 검색합니다. 실제 셸을 실행하거나 벡터 검색을 사용하지 않습니다. 원격 `explore_cards`를 먼저 조회하므로 서버가 해당 도구를 제공해야 합니다.
 
 ```sh
 steercards describe explore_cards

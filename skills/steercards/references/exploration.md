@@ -1,6 +1,6 @@
 # Explore card content as virtual files
 
-Use `explore_cards` for read-only directory navigation and text search across card Markdown and comments in one explicitly selected workspace. This is a bounded simulation, not a local filesystem, shell, vector search or mutation API. Discover and describe the tool first; run `command:"help"` for the server's current supported syntax.
+Use `explore_cards` for read-only directory navigation and text search across card Markdown and comments in one explicitly selected workspace. Listings and content searches include both active and archived cards. This is a bounded simulation, not a local filesystem, shell, vector search or mutation API. Discover and describe the tool first; run `command:"help"` for the server's current supported syntax.
 
 ## Choose the right lookup
 
