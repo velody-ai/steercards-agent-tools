@@ -241,10 +241,19 @@ test('compact and full local MCP modes expose their contract and preserve upstre
       await client.connect(clientTransport);
       t.after(async () => { await client.close(); await server.close(); });
       assert.deepEqual(client.getServerVersion(), { name: packageName, version: packageVersion });
+      const instructions = client.getInstructions() ?? '';
+      for (const contract of ['set_agent_status', 'clear_agent_status', 'working', 'waiting_for_input', 'question', 'error', '5 minutes', '10-minute', 'claimFence', 'run heartbeat', 'read-only lookups', 'even when the turn ends']) {
+        assert.ok(instructions.includes(contract), `initialize must expose card-work guidance for ${contract}`);
+      }
       const list = await client.request({ method: 'tools/list' }, ListToolsResultSchema);
       if (mode === 'compact') {
         assert.deepEqual(list.tools.map(tool => tool.name), ['steercards_search_tools', 'steercards_describe_tool', 'steercards_call_tool', 'steercards_get_guide']);
         assert.equal(f.calls.length, 0, 'compact registration must not connect upstream or expose its schemas');
+        const workGuidanceStart = instructions.indexOf('Before actual card work');
+        assert.ok(workGuidanceStart >= 0);
+        const workGuidance = instructions.slice(workGuidanceStart);
+        assert.ok(list.tools.find(tool => tool.name === 'steercards_call_tool')?.description?.includes(workGuidance), 'hosts showing only tool metadata must receive the same work contract');
+        assert.equal(list.tools.filter(tool => tool.description?.includes('set_agent_status')).length, 1, 'do not repeat the full contract on every compact tool');
         const search = await client.callTool({ name: 'steercards_search_tools', arguments: { query: 'read_card' } });
         assert.equal(JSON.stringify(search).includes('inputSchema'), false);
         const described = await client.callTool({ name: 'steercards_describe_tool', arguments: { name: 'read_card' } });
@@ -258,6 +267,7 @@ test('compact and full local MCP modes expose their contract and preserve upstre
       assert.equal(resources.resources.length, 9);
       const guide = await client.readResource({ uri: 'steercards://guide/overview' });
       assert.match(String(guide.contents[0].text), /Steercards/i);
+      assert.ok(String(guide.contents[0].text).includes('clear_agent_status'), 'bundled overview must include the default card-work flow');
     });
   }
 });

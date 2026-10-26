@@ -7,14 +7,14 @@ import { loadConfig } from './config.js';
 import { Runtime } from './runtime.js';
 import { startServer } from './server.js';
 import { clientConfig, installSkill, exportSkill, packageInfo } from './install.js';
-import { setup } from './setup.js';
+import { refreshManagedSetup, setup } from './setup.js';
 import { setupWithCode } from './setup-with-code.js';
 
 const help = `Steercards agent tools ${packageInfo.version}
 
 steercards setup [--client CLIENT] [--local | --npx] [--dry-run]
   [--setup-code-stdin] [--confirm-existing-key] [--keep-agent-key | --replace-agent-key]
-steercards serve [--mode compact|full]
+steercards serve [--mode compact|full] [--client CLIENT]
 steercards tools [query] [--limit 10]
 steercards describe NAME
 steercards call NAME [--json JSON | --file PATH | --stdin]
@@ -28,9 +28,10 @@ Connection options: --cwd PATH --env-file PATH --url URL
 Default .env: exactly --cwd/.env (otherwise current directory).
 Environment: STEERCARDS_AGENT_KEY, optional STEERCARDS_MCP_URL.
 Clients: claude-code, codex, codex-app, codex-cli, cursor, claude-desktop.
-setup installs MCP configuration and the skill together; rerun to update both.
+setup installs MCP configuration and the skill together.
 setup uses project scope (Desktop uses its user configuration and a project ZIP).
---npx explicitly switches an existing local setup to a pinned npm package.
+Npm MCP commands use @latest at the next process start and sync managed skills.
+--npx explicitly switches an existing local setup to npm automatic updates.
 --dry-run previews setup without writing files. No key is needed for setup.
 --setup-code-stdin reads a one-use installation code, protects the project .env,
   installs MCP and the skill, then checks the connection. Existing keys are kept.
@@ -41,7 +42,7 @@ Code setup emits safe progress JSONL to stderr and one final JSON report to stdo
 confirmation-required exits 0 with ok:false; wait for the user's key choice.
 config only prints a snippet and never edits host settings.
 --local uses this installation's absolute Node/CLI paths (works before npm release).
-Claude Desktop: upload the skill ZIP, use compact get_guide, or full guide resources.
+Claude Desktop: skill ZIP updates still require manual upload.
 Full tool responses are JSON; tool/product errors exit nonzero. Writes are never retried.
 explore forwards one quoted read-only virtual command to explore_cards, not a shell.
 It preserves complete, nextCursor, stopReason, exitCode and sources in the JSON result.
@@ -187,6 +188,11 @@ async function main() {
     if (Buffer.byteLength(source) > 7 * 1024 * 1024) throw new Error('JSON input exceeds 7 MiB.');
     try { args = JSON.parse(source); } catch { throw new Error('Invalid JSON arguments.'); }
     if (args === null || typeof args !== 'object' || Array.isArray(args)) throw new Error('Tool arguments must be a JSON object.');
+  }
+  if (command === 'serve' && values.client) {
+    const refreshed = await refreshManagedSetup({ ...options, client: values.client, mode: values.mode, local: values.local });
+    if (refreshed.status === 'blocked') process.stderr.write(JSON.stringify({ type: 'steercards-update', status: 'blocked', message: 'Automatic update could not complete. Review the managed config, skill, permissions and setup lock, then rerun latest setup if needed. MCP startup will continue.' }) + '\n');
+    else if (refreshed.status === 'updated') process.stderr.write(JSON.stringify({ type: 'steercards-update', status: 'updated', version: packageInfo.version, ...(refreshed.desktopSkillUploadRequired ? { message: 'The skill ZIP was updated. Upload it again in Claude Desktop skill settings.' } : {}) }) + '\n');
   }
   const config = await loadConfig(options);
   secret = config.agentKey;

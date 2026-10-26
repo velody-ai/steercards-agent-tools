@@ -7,6 +7,16 @@ description: Manage Steercards workspaces, boards, cards, files and agent collab
 
 Use the connected Steercards toolkit MCP or its `steercards` CLI. Authentication comes from `STEERCARDS_AGENT_KEY`, including a local dotenv file configured for the toolkit. Keep credentials out of tool arguments, logs and committed files. GUI hosts can use an absolute env-file path; their working directory may differ from the project.
 
+## Keep card work visible
+
+For actual work on a card, use its agent-status badge throughout the attempt. This is part of the default work flow, even when claims or run tracking are not needed. Discover and describe `set_agent_status` / `clear_agent_status` for the current inputs.
+
+1. Before starting the work, after acquiring any required claim, set `status:"working"` with your connected `agentProfileId` when using a registered profile. Refresh it every **5 minutes**, before the **10-minute** stale threshold shows no response. A short `label` can describe the current step.
+2. When waiting for a person's answer, set `status:"waiting_for_input"` and supply the actual `question`. For a blocking error, set `status:"error"`. Keep the waiting/error badge while awaiting the answer or resolution, even if your turn ends. Switch back to `working` when you resume.
+3. Clear the badge with `clear_agent_status` before completing, abandoning or handing off the work. For claim-managed cards, pass the current `claimFence` to status writes and clear **before** releasing or transferring the claim, while the fence is valid. If the fence is lost, stop writing; never clear another owner's status.
+
+Read-only lookups and assignment alone do not create a badge. Do not unconditionally clear in a `finally` block: a pending answer or unresolved blocker is still waiting work. The badge does not change the card's business status, renew a claim lease or send a run heartbeat; maintain those separately when used. See [claims-runs](references/claims-runs.md) for ownership and [collaboration](references/collaboration.md) for questions and human checks.
+
 ## Connecting from an installation prompt
 
 When the user provides a Steercards installation prompt, identify the actual client and project, then run its `setup --setup-code-stdin --confirm-existing-key` command there with `--cwd . --env-file .env` and the prompt's explicit MCP `--url`. Pass the short-lived code through stdin. Let the installer perform preflight, credential protection, MCP/Skill installation and one connection check. Follow its safe `nextSteps` on failure; do not duplicate these checks or repeat doctor after success. Never print a key or HTTP exchange body.
@@ -16,6 +26,12 @@ If the report has `status:"confirmation-required"`, ask its question, “.env에
 Relay the installer's stderr progress as brief stage updates. Its stdout contains one final JSON report; `timings` measure installer execution, excluding the earlier npm download. Installation is complete only when `ok:true` and the connection check succeeds. Then explain only the selected client's restart/reconnect or Desktop ZIP upload steps from `nextSteps`. Once required manual steps are complete, suggest: “Steercards의 워크스페이스 목록을 보여주고, 선택한 공간의 프로젝트와 보드를 조회해 줘.”
 
 If credentials were saved but installation or doctor failed, preserve `.env` and rerun normal setup/doctor without a code. After an uncertain exchange or failed key save, do not replay the code. First check whether the project `.env` contains the key without displaying its value; if saved, preserve it and recover with normal setup/doctor. Otherwise, check the code status and selected key in Steercards. Preserve reused keys and request a fresh app-generated prompt for the same usable key. If it is revoked, expired or its access changed, review its status and permissions before selecting a usable key. Only a newly issued key explicitly confirmed unused may be revoked by the user. Never automatically revoke or rotate a key because installation failed, or request the long-lived key in chat. Client restart/reconnect and Desktop Skill ZIP upload may still be needed.
+
+## Managed updates
+
+Npm setup uses `@latest` for the next MCP process start, subject to npm's cache/network policy. A newer stable runtime refreshes only an existing matching setup-managed configuration and Skill, with hashes, locks and rollback protecting user changes. A blocked local refresh emits a safe stderr notice and continues MCP startup; npx download failure occurs before this protection. Do not delete credentials or overwrite edited files to force an update.
+
+Older pinned MCP commands need one latest `setup` run and reconnect to enable this flow. Already loaded Skill instructions require a new session/reload. Raw config snippets and individual/global Skill installs are not automatically adopted; `--local` remains manual. Desktop's generated ZIP can update, but uploading it to the app remains manual.
 
 ## Discover only what the task needs
 

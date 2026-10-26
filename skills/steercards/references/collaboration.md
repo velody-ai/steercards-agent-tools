@@ -22,7 +22,13 @@ For example, use `works / Normal operation / pass`, `partial / Partly working / 
 
 The assigned person chooses in the web inbox, saves each step, then explicitly submits the final response. Selection and step saving do not finalize the check or create the completion comment/webhook. Do not answer on the person's behalf. Read `steps[].selectedOptionId` and `selectedOptionSnapshot` for original ID, label, description and verdict; final `response` preserves resultOptions and steps. Processed history, comments and `human_check.completed` retain the original choice. Inspect actual `followUpResult` as current card state, permissions or workflow may block a requested move.
 
-`set_agent_status` / `clear_agent_status` expose working/input-wait/error. A waiting question can create a pinned agent comment; it is not equivalent to a step-by-step human check. Working status needs refresh at least every ten minutes. Check claim fences when the card is claim-managed.
+## Card work badges
+
+Follow [Keep card work visible](../SKILL.md#keep-card-work-visible) for every actual card-work attempt, including work without run tracking. Describe `set_agent_status` / `clear_agent_status`, set `status:"working"` before starting and refresh every **5 minutes**, before the **10-minute** stale threshold. Read-only lookups and assignment alone do not create a badge.
+
+Set `status:"waiting_for_input"` with the actual `question` while a person's answer blocks the work; it can create a pinned agent comment. Use `status:"error"` for a blocking error and return to `working` when resuming. Keep the waiting/error badge while awaiting the answer or resolution, even if the current turn ends; do not clear it unconditionally in `finally`. A waiting question is separate from a step-by-step human check: use `request_human_check` when a person needs to verify results, and reflect the wait in the badge when that verification blocks your work.
+
+Call `clear_agent_status` before completing, abandoning or handing off the attempt. On a claim-managed card include the current `claimFence` and clear before releasing or transferring the valid claim. After fence loss, stop writing and do not clear another owner's status. A badge is transient display state: it does not move card business status, renew a claim or update run history/heartbeats.
 
 ## Reserve shared resources
 
