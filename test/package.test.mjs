@@ -84,6 +84,10 @@ test('packed npm launchers preserve project env-file semantics', { timeout: 2400
     const installedRoot = join(consumer, 'node_modules', '@steercards', 'agent-tools');
     const { setup: packedSetup } = await import(pathToFileURL(join(installedRoot, 'dist', 'setup.js')).href);
     const installed = await packedSetup({ client: 'cursor', cwd: upgradeProject }, { source: oldSource, version: '0.2.2' });
+    const legacy = JSON.parse(await readFile(installed.paths.manifest, 'utf8'));
+    const { skills: _paths, ...legacyPaths } = legacy.paths;
+    const { skills, ...legacyFields } = legacy;
+    await writeFile(installed.paths.manifest, JSON.stringify({ ...legacyFields, schemaVersion: 1, paths: legacyPaths, skill: skills.steercards }));
     const envPath = join(upgradeProject, '.env'), envBytes = 'STEERCARDS_AGENT_KEY=manual-merge-fixture-key\r\nOTHER=preserved\r\n';
     await writeFile(envPath, envBytes);
     await writeFile(join(installed.paths.skill, 'user-notes.md'), 'Preserve custom notes');
@@ -93,6 +97,8 @@ test('packed npm launchers preserve project env-file semantics', { timeout: 2400
     const setupArgs = ['setup', '--client', 'cursor', '--cwd', upgradeProject];
     const report = json(await run(bin, setupArgs, { cwd: consumer }));
     assert.equal(report.status, 'updated');
+    assert.equal(report.paths.skills.steercards, report.paths.skill);
+    assert.match(await readFile(join(report.paths.skills['steercards-workflow'], 'SKILL.md'), 'utf8'), /name: steercards-workflow/);
     assert.equal(report.version, manifest.version);
     assert.equal(JSON.parse(await readFile(installed.paths.manifest, 'utf8')).version, manifest.version);
     assert.deepEqual(await readFile(join(installed.paths.skill, 'references', 'cards.md')), await readFile(join(installedRoot, 'skills', 'steercards', 'references', 'cards.md')));
@@ -109,6 +115,21 @@ test('packed npm launchers preserve project env-file semantics', { timeout: 2400
     assert.deepEqual(await Promise.all(protectedPaths.map(path => readFile(path))), snapshots);
     assert.ok(!`${blocked.stdout}${blocked.stderr}`.includes('manual-merge-fixture-key'));
     assert.ok(!`${blocked.stdout}${blocked.stderr}`.includes('Unique user content'));
+  });
+
+  await t.test('packed workflow selection installs independently and exports its own ZIP', async () => {
+    const skillProject = join(temp, 'workflow consumer');
+    await mkdir(skillProject);
+    const report = json(await run(bin, ['skill', 'install', '--client', 'codex', '--skill', 'steercards-workflow', '--cwd', skillProject], { cwd: consumer }));
+    assert.equal(report.path, join(skillProject, '.agents', 'skills', 'steercards-workflow'));
+    assert.match(await readFile(join(report.path, 'SKILL.md'), 'utf8'), /name: steercards-workflow/);
+    for (const skill of ['steercards', 'steercards-workflow']) {
+      const archive = join(temp, `${skill}.zip`);
+      json(await run(bin, ['skill', 'export', '--skill', skill, '--output', archive], { cwd: consumer }));
+      const files = unzipSync(await readFile(archive));
+      assert.match(strFromU8(files[`${skill}/SKILL.md`]), new RegExp(`name: ${skill}`));
+      assert.ok(Object.keys(files).every(path => path.startsWith(`${skill}/`)));
+    }
   });
 
   await t.test('installed bin reads default, relative, equals and absolute paths outside process cwd', async () => {
@@ -286,8 +307,10 @@ test('packed npm launchers preserve project env-file semantics', { timeout: 2400
         const previousSkill = 'Previous setup-managed skill';
         const managed = JSON.parse(await readFile(report.paths.manifest, 'utf8'));
         managed.version = '0.0.1';
-        managed.skill.files['SKILL.md'] = createHash('sha256').update(previousSkill).digest('hex');
+        managed.skills.steercards.files['SKILL.md'] = createHash('sha256').update(previousSkill).digest('hex');
+        managed.skills['steercards-workflow'].files['SKILL.md'] = createHash('sha256').update('Previous workflow skill').digest('hex');
         await writeFile(join(report.paths.skill, 'SKILL.md'), previousSkill);
+        await writeFile(join(report.paths.skills['steercards-workflow'], 'SKILL.md'), 'Previous workflow skill');
         await writeFile(report.paths.manifest, JSON.stringify(managed));
       }
       const transport = new StdioClientTransport({ ...server, cwd: consumer, env: { ...env, npm_config_offline: 'false', npm_config_registry: registryUrl, npm_config_fetch_retries: '0' }, stderr: 'pipe' });
@@ -303,6 +326,7 @@ test('packed npm launchers preserve project env-file semantics', { timeout: 2400
         assert.ok(tools.find(tool => tool.name === 'steercards_call_tool')?.description?.includes('clear_agent_status'), 'packed runtime must expose the work flow without an installed Skill');
         const installedSkill = await readFile(join(project, '.cursor', 'skills', 'steercards', 'SKILL.md'), 'utf8');
         assert.ok(installedSkill.includes('clear_agent_status'), 'setup must install the new default work flow');
+        assert.match(await readFile(join(report.paths.skills['steercards-workflow'], 'SKILL.md'), 'utf8'), /name: steercards-workflow/);
         if (!local) {
           assert.ok(metadataReads > 0, 'the actual generated @latest command must resolve the registry tag');
           assert.equal(JSON.parse(await readFile(report.paths.manifest, 'utf8')).version, manifest.version);

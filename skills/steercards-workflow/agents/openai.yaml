@@ -1,0 +1,4 @@
+interface:
+  display_name: "Steercards Workflow"
+  short_description: "대화로 개발 워크플로우와 에이전트 역할을 정하고 프로젝트에 적용합니다"
+  default_prompt: "Use $steercards-workflow to create or revise my project's Steercards development workflow."

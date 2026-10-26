@@ -7,6 +7,15 @@ import { packageRoot, packageInfo } from './package.js';
 
 export { packageRoot, packageInfo } from './package.js';
 export const skillRoot = join(packageRoot, 'skills', 'steercards');
+export const skillNames = ['steercards', 'steercards-workflow'] as const;
+export type SkillName = typeof skillNames[number];
+export const skillRoots: Record<SkillName, string> = { steercards: skillRoot, 'steercards-workflow': join(packageRoot, 'skills', 'steercards-workflow') };
+
+export function selectedSkill(value = 'steercards'): SkillName {
+  if (!skillNames.includes(value as SkillName)) throw new Error(`Unknown skill. Choose ${skillNames.join(', ')}.`);
+  return value as SkillName;
+}
+
 export const clients = ['claude-code', 'codex', 'codex-app', 'codex-cli', 'cursor', 'claude-desktop'] as const;
 export type Client = typeof clients[number];
 
@@ -52,14 +61,15 @@ async function assertNoSymlink(path: string): Promise<void> {
   }
 }
 
-export async function installSkill(options: { client: string; cwd?: string; global?: boolean; home?: string; source?: string }): Promise<{ path: string; status: 'installed' | 'unchanged' }> {
+export async function installSkill(options: { client: string; cwd?: string; global?: boolean; home?: string; source?: string; skill?: string }): Promise<{ path: string; status: 'installed' | 'unchanged' }> {
+  const skill = selectedSkill(options.skill);
   const dirs: Record<string, string> = { 'claude-code': '.claude', codex: '.agents', 'codex-cli': '.agents', 'codex-app': '.agents', cursor: '.cursor' };
   const dir = dirs[options.client];
   if (!dir) throw new Error('For Claude Desktop use skill export and upload the ZIP, or read steercards_get_guide through MCP.');
   const base = options.global ? (options.home ?? homedir()) : resolve(options.cwd ?? process.cwd());
-  const target = join(base, dir, 'skills', 'steercards');
+  const target = join(base, dir, 'skills', skill);
   await assertNoSymlink(target);
-  const files = await skillFiles(options.source ?? skillRoot);
+  const files = await skillFiles(options.source ?? skillRoots[skill]);
   try {
     const existing = await skillFiles(target);
     if (Object.keys(existing).length === Object.keys(files).length && Object.entries(files).every(([name, data]) => existing[name] && Buffer.from(data).equals(existing[name]))) return { path: target, status: 'unchanged' };
@@ -80,9 +90,10 @@ export async function installSkill(options: { client: string; cwd?: string; glob
   return { path: target, status: 'installed' };
 }
 
-export async function exportSkill(output: string, source = skillRoot): Promise<string> {
-  const files = await skillFiles(source);
-  const entries = Object.fromEntries(Object.entries(files).map(([name, bytes]) => [`steercards/${name}`, bytes]));
+export async function exportSkill(output: string, source?: string, skillName?: string): Promise<string> {
+  const skill = selectedSkill(skillName);
+  const files = await skillFiles(source ?? skillRoots[skill]);
+  const entries = Object.fromEntries(Object.entries(files).map(([name, bytes]) => [`${skill}/${name}`, bytes]));
   const target = resolve(output);
   await writeFile(target, zipSync(entries), { flag: 'wx' });
   return target;
