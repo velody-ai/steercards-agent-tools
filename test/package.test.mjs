@@ -134,10 +134,16 @@ test('packed npm launchers preserve project env-file semantics', { timeout: 2400
       try {
         await client.connect(transport, { timeout: 15000 });
         assert.deepEqual(client.getServerVersion(), { name: manifest.name, version: manifest.version });
-        assert.equal((await client.listTools()).tools.length, 4);
+        assert.ok(client.getInstructions()?.includes('set_agent_status'));
+        const tools = (await client.listTools()).tools;
+        assert.equal(tools.length, 4);
+        assert.ok(tools.find(tool => tool.name === 'steercards_call_tool')?.description?.includes('clear_agent_status'), 'packed runtime must expose the work flow without an installed Skill');
+        const installedSkill = await readFile(join(project, '.cursor', 'skills', 'steercards', 'SKILL.md'), 'utf8');
+        assert.ok(installedSkill.includes('clear_agent_status'), 'setup must install the new default work flow');
         const guide = await client.callTool({ name: 'steercards_get_guide', arguments: {} });
         assert.equal(guide.isError, undefined);
         assert.match(guide.content[0].text, /Steercards/);
+        assert.ok(guide.content[0].text.includes('clear_agent_status'));
       } catch (error) {
         throw new Error(`${local ? 'local' : 'npx'} MCP failed: ${stderr}`, { cause: error });
       } finally { await client.close(); }

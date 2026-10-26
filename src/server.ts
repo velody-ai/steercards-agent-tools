@@ -13,7 +13,18 @@ export interface ServerOptions { mode: 'compact' | 'full' }
 
 const guideTopics = ['overview', 'discovery', 'cards', 'profiles', 'claims-runs', 'context', 'files', 'collaboration'] as const;
 const guideUri = 'steercards://guide/';
-const instructions = 'Steercards tools use progressive discovery. In compact mode search tool metadata, describe the selected tool to obtain its current schema, then call it with matching arguments. Read the Steercards guide for workflows. Tool schemas are fetched from the authenticated upstream server. Respect isError and structuredContent. Never automatically retry a mutation after a network failure; read current state first. The upstream rate limit is 120 requests per minute; follow Retry-After.';
+// Keep the work contract visible even in hosts that show tool descriptions but
+// omit initialize instructions or have an older installed Skill.
+const cardWorkInstructions = [
+  'Before actual card work, after acquiring any required claim, call set_agent_status with status:"working" and refresh it every 5 minutes, before the 10-minute stale threshold.',
+  'When waiting for a person, use status:"waiting_for_input" with the question; on a blocking error use status:"error"; resume with status:"working".',
+  'Keep waiting/error visible while awaiting an answer or resolution, even when the turn ends.',
+  'Call clear_agent_status before completing, abandoning or handing off the work.',
+  'On claim-managed cards include the current claimFence, and clear before releasing or transferring a valid claim; after fence loss stop writing and never clear another owner\'s status.',
+  'Status refresh does not renew a claim lease or send a run heartbeat.',
+  'Do not create a badge for read-only lookups or assignment alone. Describe these tools for their current inputs.',
+].join(' ');
+const instructions = 'Steercards tools use progressive discovery. In compact mode search tool metadata, describe the selected tool to obtain its current schema, then call it with matching arguments. Read the Steercards guide for workflows. Tool schemas are fetched from the authenticated upstream server. Respect isError and structuredContent. Never automatically retry a mutation after a network failure; read current state first. The upstream rate limit is 120 requests per minute; follow Retry-After. ' + cardWorkInstructions;
 
 export async function getGuide(topic = 'overview'): Promise<string> {
   if (!guideTopics.includes(topic as typeof guideTopics[number])) {
@@ -38,7 +49,7 @@ const compactTools: Tool[] = [
   },
   {
     name: 'steercards_call_tool', title: 'Call a Steercards tool',
-    description: 'Call a discovered upstream tool by its exact name with a JSON arguments object. Returns the upstream content, structuredContent, and isError unchanged. May write or delete data depending on the selected tool. Never automatically retry an uncertain mutation.',
+    description: 'Call a discovered upstream tool by its exact name with a JSON arguments object. Returns the upstream content, structuredContent, and isError unchanged. May write or delete data depending on the selected tool. Never automatically retry an uncertain mutation. ' + cardWorkInstructions,
     inputSchema: { type: 'object', properties: { name: { type: 'string', minLength: 1 }, arguments: { type: 'object', additionalProperties: true } }, required: ['name', 'arguments'], additionalProperties: false },
     annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: true },
   },

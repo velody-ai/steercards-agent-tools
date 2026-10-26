@@ -2,6 +2,13 @@
 
 공개 패키지는 [`@steercards/agent-tools`](https://www.npmjs.com/package/@steercards/agent-tools), 소스는 [`velody-ai/steercards-agent-tools`](https://github.com/velody-ai/steercards-agent-tools)에서 관리합니다. 일반 CI는 검증을 수행하고, 안정 버전의 GitHub Release를 게시하면 `.github/workflows/publish.yml`이 npm에 게시합니다. 태그 push나 main 병합만으로는 게시하지 않습니다.
 
+## 0.1.7 카드 작업 배지 기본 흐름 (SC-634)
+
+- 실제 카드 작업 시작 전 `working`, 5분 갱신(10분 stale 이전), 사람 답 대기 시 `waiting_for_input`과 질문, 차단 오류 시 `error`, 재개 시 `working`, 완료·중단·인계 전 clear를 기본 계약으로 안내합니다. 답·해결을 기다리는 동안은 턴 종료만으로 지우지 않습니다. 조회·단순 배정은 배지를 만들지 않습니다.
+- claim-managed 카드의 상태 쓰기에는 현재 `claimFence`를 사용하고, 반납·이전 전 유효한 fence로 정리합니다. 소유권을 잃은 뒤 다른 담당자의 배지를 지우지 않습니다. 상태 배지·claim lease·run heartbeat는 각각 유지합니다.
+- MCP 초기 instructions와 compact 호출 도구 설명이 같은 핵심 계약을 노출합니다. 설치 Skill·overview/claims-runs/collaboration 가이드 및 full MCP resource에도 안내합니다. upstream 도구 스키마·호출·응답은 그대로 전달하며 자동 상태 쓰기는 추가하지 않습니다.
+- 최신 버전 `setup`은 관리 기록의 해시가 일치하는 파일을 갱신하며 이후 MCP를 재연결합니다. 수동 수정 또는 미관리 Skill의 내용 충돌은 보존·검토·수동 병합하고, `skill install` 단독 실행으로 덮어쓰지 않습니다. Desktop 업로드 Skill은 새 ZIP을 다시 업로드합니다. 앱 서버의 도구 설명 배포와 npm 게시·기존 설치 갱신은 별도 단계입니다.
+
 ## 0.1.6 확인 요청 제목 안내 (SC-591)
 
 - 확인 요청 생성 전에 collaboration 가이드를 읽고, 요청·단계 제목은 행동이나 질문이 분명한 짧은 문장으로 작성하도록 안내합니다. 기대 결과와 상세 배경은 각각 `expected`와 연결 카드 본문으로 나눕니다.

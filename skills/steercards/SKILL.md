@@ -7,6 +7,16 @@ description: Manage Steercards workspaces, boards, cards, files and agent collab
 
 Use the connected Steercards toolkit MCP or its `steercards` CLI. Authentication comes from `STEERCARDS_AGENT_KEY`, including a local dotenv file configured for the toolkit. Keep credentials out of tool arguments, logs and committed files. GUI hosts can use an absolute env-file path; their working directory may differ from the project.
 
+## Keep card work visible
+
+For actual work on a card, use its agent-status badge throughout the attempt. This is part of the default work flow, even when claims or run tracking are not needed. Discover and describe `set_agent_status` / `clear_agent_status` for the current inputs.
+
+1. Before starting the work, after acquiring any required claim, set `status:"working"` with your connected `agentProfileId` when using a registered profile. Refresh it every **5 minutes**, before the **10-minute** stale threshold shows no response. A short `label` can describe the current step.
+2. When waiting for a person's answer, set `status:"waiting_for_input"` and supply the actual `question`. For a blocking error, set `status:"error"`. Keep the waiting/error badge while awaiting the answer or resolution, even if your turn ends. Switch back to `working` when you resume.
+3. Clear the badge with `clear_agent_status` before completing, abandoning or handing off the work. For claim-managed cards, pass the current `claimFence` to status writes and clear **before** releasing or transferring the claim, while the fence is valid. If the fence is lost, stop writing; never clear another owner's status.
+
+Read-only lookups and assignment alone do not create a badge. Do not unconditionally clear in a `finally` block: a pending answer or unresolved blocker is still waiting work. The badge does not change the card's business status, renew a claim lease or send a run heartbeat; maintain those separately when used. See [claims-runs](references/claims-runs.md) for ownership and [collaboration](references/collaboration.md) for questions and human checks.
+
 ## Connecting from an installation prompt
 
 When the user provides a Steercards installation prompt, identify the actual client and project, then run its `setup --setup-code-stdin --confirm-existing-key` command there with `--cwd . --env-file .env` and the prompt's explicit MCP `--url`. Pass the short-lived code through stdin. Let the installer perform preflight, credential protection, MCP/Skill installation and one connection check. Follow its safe `nextSteps` on failure; do not duplicate these checks or repeat doctor after success. Never print a key or HTTP exchange body.
