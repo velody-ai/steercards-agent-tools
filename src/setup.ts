@@ -30,6 +30,11 @@ export interface SetupReport {
   nextSteps: string[];
 }
 
+export interface ManagedRefreshReport {
+  status: 'skipped' | 'updated' | 'unchanged' | 'blocked';
+  desktopSkillUploadRequired?: boolean;
+}
+
 /** Internal dependency injection for isolated upgrade, race, and failure tests. */
 export interface SetupDependencies {
   source?: string;
@@ -63,6 +68,18 @@ const own = (value: ObjectValue, name: string) => Object.prototype.hasOwnPropert
 const fields = (value: ObjectValue): Fields => Object.fromEntries(fieldNames.map(name => [name, own(value, name) ? hash(JSON.stringify(value[name])) : absent])) as Fields;
 const missing = (error: unknown) => (error as NodeJS.ErrnoException).code === 'ENOENT';
 const sameSnapshot = (left: Snapshot, right: Snapshot) => left === null ? right === null : right !== null && left.bytes.equals(right.bytes);
+
+// Startup only advances stable releases. Unknown/prerelease versions are left
+// for explicit setup, and numeric comparison avoids 0.1.10 < 0.1.9 mistakes.
+function newerStableVersion(current: string, previous: string): boolean {
+  const stable = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
+  if (!stable.test(current) || !stable.test(previous)) return false;
+  const left = current.split('.').map(BigInt), right = previous.split('.').map(BigInt);
+  for (let index = 0; index < 3; index++) {
+    if (left[index] !== right[index]) return left[index] > right[index];
+  }
+  return false;
+}
 
 // JSONC deliberately builds null-prototype objects. Compare values, while keeping
 // TOML date/time instances intact so their distinct types remain significant.
@@ -239,6 +256,22 @@ async function atomicWrite(path: string, data: Buffer, mode: number, ensureDirec
 
 /** Configure MCP and the matching skill together, preserving unrelated client data. */
 export async function setup(options: SetupOptions, dependencies: SetupDependencies = {}): Promise<SetupReport> {
+  return (await applySetup(options, dependencies, false))!;
+}
+
+/** Best-effort startup sync; never adopt an unmanaged install or touch credentials. */
+export async function refreshManagedSetup(options: SetupOptions, dependencies: SetupDependencies = {}): Promise<ManagedRefreshReport> {
+  try {
+    const report = await applySetup(options, { ...dependencies, afterPreflight: undefined }, true);
+    if (!report) return { status: 'skipped' };
+    return { status: report.status === 'updated' ? 'updated' : 'unchanged', ...(report.status === 'updated' && report.client === 'claude-desktop' ? { desktopSkillUploadRequired: true } : {}) };
+  } catch {
+    // Do not expose raw filesystem/configuration contents in the MCP stderr.
+    return { status: 'blocked' };
+  }
+}
+
+async function applySetup(options: SetupOptions, dependencies: SetupDependencies, startup: boolean): Promise<SetupReport | undefined> {
   if (!clients.includes(options.client as typeof clients[number])) throw new Error(`Unknown client. Choose ${clients.join(', ')}.`);
   const client = options.client.startsWith('codex') ? 'codex' : options.client;
   const cwd = await canonicalBase(options.cwd ?? process.cwd());
@@ -269,6 +302,7 @@ export async function setup(options: SetupOptions, dependencies: SetupDependenci
   await noSymlink(lockPath);
   const manifestBefore = await remember(paths.manifest);
   const previous = manifestBefore ? readManifest(manifestBefore.bytes, client, paths) : undefined;
+  if (startup && (!previous || previous.options.local || options.local || !newerStableVersion(version, previous.version))) return undefined;
   const effective = {
     cwd,
     local: options.local ?? previous?.options.local ?? false,
@@ -276,12 +310,15 @@ export async function setup(options: SetupOptions, dependencies: SetupDependenci
     ...((options.url ?? previous?.options.url) !== undefined ? { url: options.url ?? previous?.options.url } : {}),
     ...((options.envFile ?? previous?.options.envFile) !== undefined ? { envFile: resolve(cwd, (options.envFile ?? previous?.options.envFile)!) } : {}),
   };
-  let generatedText = clientConfig(client, effective);
-  if (version !== packageInfo.version && !effective.local) generatedText = generatedText.replace(`${packageInfo.name}@${packageInfo.version}`, `${packageInfo.name}@${version}`);
+  if (startup && ((options.mode ?? 'compact') !== previous!.options.mode || options.url !== previous!.options.url || (options.envFile === undefined ? undefined : resolve(cwd, options.envFile)) !== previous!.options.envFile)) throw new Error('Startup arguments do not match the managed installation.');
+  const generatedText = clientConfig(client, effective);
   const desired = serverFrom(parseConfig(generatedText, toml), toml ? 'mcp_servers' : 'mcpServers')!;
   const configBefore = await remember(configPath);
   const configText = configBefore?.bytes.toString('utf8') ?? (toml ? '' : '{}\n');
   const original = parseConfig(configText, toml);
+  // Only the @latest command created by setup opts in. In particular, a raw
+  // serve invocation cannot migrate a legacy pinned command by finding a manifest.
+  if (startup && !isDeepStrictEqual(fields(serverFrom(original, toml ? 'mcp_servers' : 'mcpServers') ?? {}), fields(desired))) throw new Error('Startup command does not match the managed automatic-update command.');
   const configAfter = changedConfiguration(configText, original, generatedText, desired, toml, previous);
   const files = await sourceFiles(await canonicalBase(dependencies.source ?? skillRoot));
   if (!files['SKILL.md']) throw new Error('Skill source is missing SKILL.md.');
@@ -319,6 +356,7 @@ export async function setup(options: SetupOptions, dependencies: SetupDependenci
   for (const [path, bytes] of plan) {
     const before = await remember(path);
     if (bytes === null ? before === null : before?.bytes.equals(bytes)) plan.delete(path);
+    else if (startup && before && (before.mode & 0o200) === 0) throw new Error('A managed startup destination is read-only.');
   }
   const actions = [...plan].map(([path, bytes]) => `${bytes === null ? 'remove' : baselines.get(path) ? 'update' : 'create'} ${path}`);
   const nextSteps = client === 'claude-desktop'
@@ -353,6 +391,7 @@ export async function setup(options: SetupOptions, dependencies: SetupDependenci
     for (const [path, before] of baselines) {
       const now = await snapshot(path);
       if (!sameSnapshot(before, now)) throw new Error('A setup destination changed during preflight. Retry after reviewing the client configuration and skill; no files were changed.');
+      if (startup && plan.has(path) && now && (now.mode & 0o200) === 0) throw new Error('A managed startup destination became read-only.');
     }
     if (skillPath) await checkSkillTree(skillPath);
     if (dependencies.afterPreflight) {
@@ -373,7 +412,9 @@ export async function setup(options: SetupOptions, dependencies: SetupDependenci
     let index = 0;
     for (const [path, bytes] of plan) {
       await dependencies.beforeWrite?.(path, index++);
-      if (!sameSnapshot(baselines.get(path)!, await snapshot(path))) throw new Error('A setup destination changed before writing. Retry after reviewing the client configuration and skill.');
+      const now = await snapshot(path);
+      if (!sameSnapshot(baselines.get(path)!, now)) throw new Error('A setup destination changed before writing. Retry after reviewing the client configuration and skill.');
+      if (startup && now && (now.mode & 0o200) === 0) throw new Error('A managed startup destination became read-only.');
       attempted.push(path);
       if (bytes === null) { await noSymlink(path); await rm(path); }
       else await atomicWrite(path, bytes, baselines.get(path)?.mode ?? 0o600, ensureDirectory);

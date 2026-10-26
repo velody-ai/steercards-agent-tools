@@ -88,14 +88,16 @@ for (const client of ['codex', 'claude-code', 'cursor']) {
   });
 }
 
-test('npm setup pins the new version and uses saved nonsecret options during upgrade', async t => {
+test('npm setup uses latest and preserves saved nonsecret options during upgrade', async t => {
   const { cwd, source } = await fixture(t);
   const first = await setup({ client: 'cursor', cwd, mode: 'full', url: 'https://steercards.app/api/mcp', envFile: 'keys.env' }, { source, version: '1.0.0' });
   let server = parseJsonc(await readFile(first.paths.config, 'utf8')).mcpServers.steercards;
-  assert.ok(server.args.includes('@steercards/agent-tools@1.0.0'));
+  assert.ok(server.args.includes('@steercards/agent-tools@latest'));
+  assert.equal(server.args[server.args.indexOf('--client') + 1], 'cursor');
   await setup({ client: 'cursor', cwd }, { source, version: '2.0.0' });
   server = parseJsonc(await readFile(first.paths.config, 'utf8')).mcpServers.steercards;
-  assert.ok(server.args.includes('@steercards/agent-tools@2.0.0'));
+  assert.ok(server.args.includes('@steercards/agent-tools@latest'));
+  assert.equal(JSON.parse(await readFile(first.paths.manifest, 'utf8')).version, '2.0.0');
   assert.ok(server.args.includes('full'));
   assert.ok(server.args.includes('https://steercards.app/api/mcp'));
   assert.ok(server.args.includes(join(cwd, 'keys.env')));

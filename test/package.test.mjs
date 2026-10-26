@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
+import { createHash } from 'node:crypto';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 
@@ -117,9 +118,30 @@ test('packed npm launchers preserve project env-file semantics', { timeout: 2400
     assert.equal(json(await run(bin, args, { cwd: consumer })).url, 'https://selected.example/api/mcp');
   });
 
-  await t.test('generated local and pinned npx MCP commands connect from another directory', async () => {
+  await t.test('generated local and latest npx MCP commands connect and sync a previous managed skill', async () => {
+    // The candidate is not published. Resolve @latest against its exact packed
+    // bytes through a local registry, without fetching the public release.
+    let metadataReads = 0;
+    const registry = createServer(async (req, res) => {
+      if (decodeURIComponent(req.url).toLowerCase() === '/@steercards/agent-tools') {
+        metadataReads++;
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify({ name: manifest.name, 'dist-tags': { latest: manifest.version }, versions: { [manifest.version]: { ...manifest, dist: { tarball: `${registryUrl}/candidate.tgz`, integrity: packed[0].integrity, shasum: packed[0].shasum } } } }));
+      } else if (req.url === '/candidate.tgz') res.end(await readFile(join(temp, packed[0].filename)));
+      else { res.writeHead(404); res.end(); }
+    });
+    registry.listen(0, '127.0.0.1'); await once(registry, 'listening');
+    const registryUrl = `http://127.0.0.1:${registry.address().port}`;
+    // Record the matching registry origin for the already installed, identical
+    // tarball. npm's tag resolution can then reuse this locked local dependency.
+    for (const path of [join(consumer, 'package-lock.json'), join(consumer, 'node_modules', '.package-lock.json')]) {
+      const installedLock = JSON.parse(await readFile(path, 'utf8'));
+      installedLock.packages[`node_modules/${manifest.name}`].resolved = `${registryUrl}/candidate.tgz`;
+      await writeFile(path, JSON.stringify(installedLock));
+    }
     await mkdir(join(project, '.cursor'));
     await writeFile(join(project, '.cursor', 'mcp.json'), '{"theme":"preserved","mcpServers":{"other":{"command":"other"}}}');
+    try {
     for (const local of [true, false]) {
       const report = json(await run(bin, ['setup', '--client', 'cursor', '--cwd', project, ...(local ? ['--local', '--env-file', 'alternate.env'] : ['--npx'])], { cwd: consumer }));
       assert.equal(report.status, local ? 'installed' : 'updated');
@@ -127,7 +149,17 @@ test('packed npm launchers preserve project env-file semantics', { timeout: 2400
       assert.equal(config.theme, 'preserved');
       assert.equal(config.mcpServers.other.command, 'other');
       const server = config.mcpServers.steercards;
-      const transport = new StdioClientTransport({ ...server, cwd: consumer, env: { ...env, npm_config_offline: 'true' }, stderr: 'pipe' });
+      if (!local) {
+        assert.ok(server.args.includes(`${manifest.name}@latest`));
+        assert.equal(server.args[server.args.indexOf('--client') + 1], 'cursor');
+        const previousSkill = 'Previous setup-managed skill';
+        const managed = JSON.parse(await readFile(report.paths.manifest, 'utf8'));
+        managed.version = '0.0.1';
+        managed.skill.files['SKILL.md'] = createHash('sha256').update(previousSkill).digest('hex');
+        await writeFile(join(report.paths.skill, 'SKILL.md'), previousSkill);
+        await writeFile(report.paths.manifest, JSON.stringify(managed));
+      }
+      const transport = new StdioClientTransport({ ...server, cwd: consumer, env: { ...env, npm_config_offline: 'false', npm_config_registry: registryUrl, npm_config_fetch_retries: '0' }, stderr: 'pipe' });
       const client = new Client({ name: 'package-regression', version: '1' });
       let stderr = '';
       transport.stderr?.on('data', chunk => { stderr += chunk; });
@@ -140,6 +172,11 @@ test('packed npm launchers preserve project env-file semantics', { timeout: 2400
         assert.ok(tools.find(tool => tool.name === 'steercards_call_tool')?.description?.includes('clear_agent_status'), 'packed runtime must expose the work flow without an installed Skill');
         const installedSkill = await readFile(join(project, '.cursor', 'skills', 'steercards', 'SKILL.md'), 'utf8');
         assert.ok(installedSkill.includes('clear_agent_status'), 'setup must install the new default work flow');
+        if (!local) {
+          assert.ok(metadataReads > 0, 'the actual generated @latest command must resolve the registry tag');
+          assert.equal(JSON.parse(await readFile(report.paths.manifest, 'utf8')).version, manifest.version);
+          assert.ok(stderr.includes('"status":"updated"'), 'packed serve must sync the previous managed skill before speaking MCP');
+        }
         const guide = await client.callTool({ name: 'steercards_get_guide', arguments: {} });
         assert.equal(guide.isError, undefined);
         assert.match(guide.content[0].text, /Steercards/);
@@ -149,6 +186,7 @@ test('packed npm launchers preserve project env-file semantics', { timeout: 2400
       } finally { await client.close(); }
     }
     assert.equal(json(await run(bin, ['setup', '--client', 'cursor', '--cwd', project], { cwd: consumer })).status, 'unchanged');
+    } finally { registry.closeAllConnections(); await new Promise(resolve => registry.close(resolve)); }
   });
 
   await t.test('Windows PowerShell npm shim preserves the env-file option', { skip: process.platform !== 'win32' }, async () => {

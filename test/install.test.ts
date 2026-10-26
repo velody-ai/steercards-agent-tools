@@ -35,6 +35,17 @@ test('every client config pins project and mode without reading dotenv', () => {
   assert.throws(() => clientConfig('codex', { url: 'https://user:secret@example.com/api/mcp' }));
 });
 
+test('npm client commands use latest with a canonical startup-sync client; local commands stay fixed', () => {
+  for (const client of clients) {
+    const generated = clientConfig(client);
+    assert.ok(generated.includes('@steercards/agent-tools@latest'));
+    assert.ok(generated.includes('--client'));
+    assert.ok(generated.includes(client.startsWith('codex') ? 'codex' : client));
+    assert.ok(!clientConfig(client, { local: true }).includes('--client'));
+    assert.ok(!clientConfig(client, { local: true }).includes('@latest'));
+  }
+});
+
 test('skill installation preserves existing content and supports idempotent reinstall', async t => {
   const { root, source } = await fixture(t);
   const options = { client: 'codex', cwd: root, source };

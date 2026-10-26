@@ -71,21 +71,27 @@ node -- /absolute/path/agent-tools/dist/cli.js doctor --cwd /absolute/path/proje
 
 ## npm 설치와 업데이트
 
-처음 설치할 때와 새 버전으로 업데이트할 때 같은 명령을 사용합니다.
+처음 설치하거나 이전 버전 고정 설치를 자동 갱신 방식으로 전환할 때 실행합니다.
 
 ```sh
 npx -y -- @steercards/agent-tools@latest setup --client codex-app --cwd /absolute/path/project
 ```
 
-실행한 패키지 버전의 MCP 설정과 Skill을 함께 적용합니다. npx 기반 MCP 실행 명령은 해당 버전에 고정되므로 Skill과 같은 버전을 사용합니다. 같은 버전·옵션으로 다시 실행하면 변경 없이 성공합니다. 기존 설치에서는 생략한 실행 옵션(`--local`, `--mode`, `--url`, `--env-file`)을 설치 기록에서 유지합니다. `--local` 설치는 새 소스를 받은 뒤 `npm ci`, `npm run build`를 실행하고 같은 `setup --local` 명령을 다시 실행하세요.
+최초 설치는 실행한 패키지의 MCP 설정과 Skill을 함께 적용합니다. npm 기반 MCP 명령은 `npx -y -- @steercards/agent-tools@latest serve --client <클라이언트> ...`를 사용합니다. 다음 MCP 프로세스 시작 때 npm의 `latest` 태그와 캐시 정책에 따라 패키지를 선택하며, 이미 실행 중인 프로세스를 교체하지 않습니다. 네트워크·캐시 상태에 따라 반영 시점이 달라질 수 있으므로 게시 즉시 모든 설치가 바뀐다는 의미는 아닙니다. [npm exec 캐시 안내](https://docs.npmjs.com/cli/commands/npm-exec/#a-note-on-caching)를 참고하세요.
 
-소스의 `--local` 설치를 npm 실행 방식으로 전환할 때는 `--npx`를 지정합니다. 이후 MCP 설정은 실행한 패키지 버전의 npx 명령을 사용합니다.
+시작한 패키지가 설치 기록보다 새 안정 버전이면, 유효한 `.steercards/setup/` 관리 기록과 같은 클라이언트·프로젝트·실행 옵션의 npm 설정에 한해 관리된 Skill과 설정을 갱신합니다. 기존 해시·잠금·롤백 검사를 사용하며 사용자 수정·삭제·권한·잠금·경합 문제가 있으면 자동 덮어쓰기를 막고 stderr에 안내한 뒤 MCP 시작을 계속합니다. 더 새 버전의 관리 파일을 이전 프로세스가 되돌리지 않습니다. 자격증명 교환·변경이나 추가 연결 검사는 수행하지 않습니다. 앞단의 npx 다운로드 자체가 실패하면 패키지가 시작되지 않으므로 이 연결 유지 범위에 포함되지 않습니다.
+
+기존 버전 고정 MCP 설정은 스스로 바뀔 수 없으므로 위 최신 `setup`을 **한 번** 실행하고 MCP를 재연결해야 합니다. 이후 관리 설치는 MCP 재시작으로 갱신하며, 이미 대화에 로드한 Skill은 다음 세션이나 클라이언트 새로고침 후 반영됩니다. 수동 `config` 조각이나 개별 `skill install`만 사용한 미관리 설치는 시작할 때 새로 설치하거나 관리 대상으로 채택하지 않습니다. Claude Desktop의 관리 ZIP도 갱신하지만 앱에 올린 Skill을 교체할 수는 없으므로 새 ZIP 업로드는 수동입니다.
+
+같은 버전·옵션의 `setup`은 변경 없이 성공합니다. 기존 설치에서는 생략한 실행 옵션(`--local`, `--mode`, `--url`, `--env-file`)을 설치 기록에서 유지합니다. `--local`은 npm 자동 갱신으로 전환하지 않습니다. 새 소스를 받은 뒤 `npm ci`, `npm run build`와 같은 `setup --local` 명령을 실행하세요.
+
+소스의 `--local` 설치를 npm 자동 갱신 방식으로 전환할 때는 `--npx`를 지정합니다. 이후 MCP 설정은 `@latest` npx 명령을 사용합니다.
 
 ```sh
 npx -y -- @steercards/agent-tools@latest setup --client codex-app --cwd /absolute/path/project --npx
 ```
 
-전역 설치를 선택했다면 패키지를 업데이트한 뒤 `setup`을 다시 실행합니다.
+전역 CLI 설치와 `skill install --global`로 복사한 스킬은 수동으로 갱신합니다. 전역 CLI를 갱신하고 `setup`을 실행하면 해당 프로젝트에는 위 npm 자동 갱신 설정을 적용합니다.
 
 ```sh
 npm install --global @steercards/agent-tools@latest
@@ -178,7 +184,7 @@ steercards serve --cwd /absolute/path/project --mode full
 
 claim이 관리하는 카드에서는 상태 쓰기에 현재 `claimFence`를 전달하고 claim을 반납·이전하기 전에 유효한 fence로 정리합니다. 소유권을 잃은 뒤에는 쓰기를 중단하고 다른 담당자의 배지를 지우지 않습니다. 배지는 카드 업무 상태·claim lease·run heartbeat와 별개이며 이를 자동으로 변경하거나 갱신하지 않습니다. 입력은 항상 현재 원격 스키마로 확인합니다.
 
-이 기본 흐름은 MCP 초기 instructions, compact 호출 도구 설명과 배포 Skill 첫 부분에 포함됩니다. 이전 Skill을 쓰거나 초기 instructions를 표시하지 않는 호스트에서도 최신 MCP의 호출 도구 설명으로 확인할 수 있습니다. 기존 설치는 최신 `setup`으로 관리 기록의 해시가 일치하는 파일을 갱신하고 MCP를 재연결합니다. 사용자가 수정했거나 관리 기록 없이 내용이 다른 Skill은 보존하고 충돌 내용을 검토해 수동 병합합니다. `skill install` 단독 명령은 내용이 다른 기존 Skill을 덮어쓰지 않습니다. Claude Desktop에 업로드한 Skill은 새 ZIP을 다시 업로드합니다.
+이 기본 흐름은 MCP 초기 instructions, compact 호출 도구 설명과 배포 Skill 첫 부분에 포함됩니다. 이전 Skill을 쓰거나 초기 instructions를 표시하지 않는 호스트에서도 최신 MCP의 호출 도구 설명으로 확인할 수 있습니다. 이전 설치는 최신 `setup`을 한 번 실행한 뒤 위 [자동 갱신 흐름](#npm-설치와-업데이트)을 따릅니다. 사용자가 수정했거나 관리 기록 없이 내용이 다른 Skill은 보존하고 충돌 내용을 검토해 수동 병합합니다. `skill install` 단독 명령은 내용이 다른 기존 Skill을 덮어쓰지 않습니다. Claude Desktop에 업로드한 Skill은 새 ZIP을 다시 업로드합니다.
 
 ## CLI로 도구 사용
 

@@ -27,6 +27,12 @@ Relay the installer's stderr progress as brief stage updates. Its stdout contain
 
 If credentials were saved but installation or doctor failed, preserve `.env` and rerun normal setup/doctor without a code. After an uncertain exchange or failed key save, do not replay the code. First check whether the project `.env` contains the key without displaying its value; if saved, preserve it and recover with normal setup/doctor. Otherwise, check the code status and selected key in Steercards. Preserve reused keys and request a fresh app-generated prompt for the same usable key. If it is revoked, expired or its access changed, review its status and permissions before selecting a usable key. Only a newly issued key explicitly confirmed unused may be revoked by the user. Never automatically revoke or rotate a key because installation failed, or request the long-lived key in chat. Client restart/reconnect and Desktop Skill ZIP upload may still be needed.
 
+## Managed updates
+
+Npm setup uses `@latest` for the next MCP process start, subject to npm's cache/network policy. A newer stable runtime refreshes only an existing matching setup-managed configuration and Skill, with hashes, locks and rollback protecting user changes. A blocked local refresh emits a safe stderr notice and continues MCP startup; npx download failure occurs before this protection. Do not delete credentials or overwrite edited files to force an update.
+
+Older pinned MCP commands need one latest `setup` run and reconnect to enable this flow. Already loaded Skill instructions require a new session/reload. Raw config snippets and individual/global Skill installs are not automatically adopted; `--local` remains manual. Desktop's generated ZIP can update, but uploading it to the app remains manual.
+
 ## Discover only what the task needs
 
 1. Search capabilities: `steercards_search_tools({query: "card context", limit: 5})`.

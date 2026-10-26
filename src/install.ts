@@ -17,8 +17,10 @@ export function clientConfig(client: string, options: { cwd?: string; local?: bo
   const cwd = resolve(options.cwd ?? process.cwd());
   // Node 22 pre-scans --env-file even after the script path. Protect both the
   // local Node process and the outer npx process before passing CLI options.
-  const args = options.local ? ['--', join(packageRoot, 'dist', 'cli.js')] : ['-y', '--', `${packageInfo.name}@${packageInfo.version}`];
-  args.push('serve', '--cwd', cwd, '--mode', mode);
+  const args = options.local ? ['--', join(packageRoot, 'dist', 'cli.js')] : ['-y', '--', `${packageInfo.name}@latest`];
+  args.push('serve');
+  if (!options.local) args.push('--client', client.startsWith('codex') ? 'codex' : client);
+  args.push('--cwd', cwd, '--mode', mode);
   if (options.envFile) args.push('--env-file', resolve(cwd, options.envFile));
   if (options.url) {
     args.push('--url', validateMcpUrl(options.url));
