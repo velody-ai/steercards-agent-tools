@@ -2,6 +2,12 @@
 
 공개 패키지는 [`@steercards/agent-tools`](https://www.npmjs.com/package/@steercards/agent-tools), 소스는 [`velody-ai/steercards-agent-tools`](https://github.com/velody-ai/steercards-agent-tools)에서 관리합니다. 일반 CI는 검증을 수행하고, 안정 버전의 GitHub Release를 게시하면 `.github/workflows/publish.yml`이 npm에 게시합니다. 태그 push나 main 병합만으로는 게시하지 않습니다.
 
+## 0.2.3 관련 카드의 파일 우선 탐색 안내
+
+- 관련 카드는 `explore_cards`로 디렉터리부터 탐색합니다. `ls`의 디렉터리·카드 제목 메타데이터와 `find`의 파일 경로·키를 구분하고, `rg -g card.md`로 제목·본문을 찾은 뒤 `cat`/줄 범위로 읽으며 다음 범위를 점진적으로 좁힙니다.
+- 댓글은 본문만으로 맥락이 부족하거나 이력·논의를 요청할 때 보조로 읽습니다. 현재 카드 키·근거 줄·검색 범위와 미완료 커서를 함께 보고하며, 정확한 키 조회와 필터 전용 요청은 해당 도구로 바로 처리합니다.
+- MCP 초기 instructions·compact 검색 도구 설명·README·설치 Skill과 탐색 가이드에 같은 흐름을 적용합니다. 기존 작업 배지와 관리 설치 자동 갱신 안내를 보존합니다.
+
 ## 0.2.2 카드 탐색 필터 안내 수정 (SC-635)
 
 - `search_cards`는 상태·승인 필터와 보관 카드 포함 여부에 사용하고, 참여자는 `list_participant_cards`로 보드의 활성 카드를 조회하도록 안내합니다. 다른 속성 구조는 `get_board`와 사용 가능한 도구의 현재 스키마로 확인합니다.
