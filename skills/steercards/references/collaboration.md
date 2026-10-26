@@ -1,8 +1,26 @@
 # Collaboration, verification and event delivery
 
-## Comments and feeds
+## Comments that explain the work
 
-Use `add_comment` for a concise plain-text note; its body is different from card `description`. Comments are not automatically deduplicated: inspect `list_comments` after an uncertain write. Deletion is limited to comments written by the same key. Registered profile mentions use `@[profile:UUID]`; discover the UUID instead of inferring it from a display name.
+Follow [Keep people informed through card comments](../SKILL.md#keep-people-informed-through-card-comments) throughout actual card work. Record the intent before consequential actions and the useful facts as the work develops, so a person can follow the sequence without reading your chat or tool calls.
+
+Use `add_comment` for a plain-text note; its `body` is different from card `description`. Describe the live schema and supply your connected `agentProfileId` when acting as a registered profile. After an uncertain write, inspect `list_comments` before retrying: comments are not automatically deduplicated. Deletion is limited to comments written by the same key.
+
+For an agent teammate, resolve the active profile with `list_agent_profiles(workspaceId)` and put `@[profile:UUID]` in the body, replacing UUID with the actual profile ID. A display name or plain `@handle` does not substitute for a profile-inbox mention. Include the finding they need or the specific next action, rather than tagging someone without context. Receiving a mention does not start an external agent process or expand its authorized work.
+
+Examples below show natural wording, not a required template. `@qa-guy` is a readable example of the rendered mention; resolve the actual profile token before posting.
+
+- Starting: “저장 후 새로고침할 때 값이 사라지는 흐름부터 재현해 보겠습니다.”
+- Before splitting work: “DB 변경이 먼저 필요해서 하위 카드로 나누겠습니다.”
+- After creating the child: “하위 카드 SC-123을 만들었습니다. 여기서는 화면 작업을 이어가겠습니다.”
+- Useful progress: “저장 요청에는 값이 들어가는데 조회 응답에서 빠지고 있어요. 응답 변환 부분을 확인하고 있습니다.”
+- Blocker and next step: “테스트 계정 권한이 없어 운영 확인이 막혔어요. 로컬 재현은 확인했고, 권한이 준비되면 운영에서도 검증하겠습니다.”
+- Changed plan: “서버 응답은 정상이어서 하위 카드는 만들지 않겠습니다. 화면에서 값을 덮어쓰는 부분을 수정할게요.”
+- Result and handoff: “수정했고 로컬에서 저장·재조회까지 확인했습니다. @qa-guy 배포 후 같은 흐름을 확인해 주세요.”
+
+Only claim observed results. Keep the relevant card or evidence link when it helps, and skip a second note if a tool already posted the same question or result. A routine status refresh or unchanged wait does not need another comment.
+
+## Read comments and feeds
 
 Use filtered `list_comments` for a narrow author/mention/time question. Use `list_activity` for simple recent changes, `list_workspace_activity` for workspace filtering, or `list_card_feed` for a unified timeline. Describe cursor/filter inputs instead of fetching all sources and concatenating them.
 

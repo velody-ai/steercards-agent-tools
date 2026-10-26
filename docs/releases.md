@@ -2,6 +2,12 @@
 
 공개 패키지는 [`@steercards/agent-tools`](https://www.npmjs.com/package/@steercards/agent-tools), 소스는 [`velody-ai/steercards-agent-tools`](https://github.com/velody-ai/steercards-agent-tools)에서 관리합니다. 일반 CI는 검증을 수행하고, 안정 버전의 GitHub Release를 게시하면 `.github/workflows/publish.yml`이 npm에 게시합니다. 태그 push나 main 병합만으로는 게시하지 않습니다.
 
+## 0.2.6 작업 흐름을 전달하는 댓글·멘션 지침 (SC-652)
+
+- 사람이 카드 댓글만 훑어도 작업 이유·현재 상황·다음 단계를 이해할 수 있도록 설치 Skill 본문에 댓글 작성 시점을 명시합니다. 착수 의도, 하위 카드 생성·작업 분리 등 중요한 행동의 예고, 의미 있는 진척·문제·해결과 완료·인계를 짧고 자연스럽게 공유합니다.
+- 협업 가이드에 실제 프로필 멘션과 간결한 댓글 예시를 제공합니다. 필요한 동료에게 참고할 내용이나 다음 행동을 알리고, 고정 보고서 양식·원시 로그·변화 없는 반복 댓글을 피하도록 안내합니다.
+- compact 가이드·full MCP resource·설치 Skill·Desktop ZIP에 같은 원문이 전달됩니다. 기존 관리 설치는 새 npm MCP 시작 또는 최신 setup으로 갱신하며, 이미 읽은 Skill은 새 세션/reload, Desktop ZIP은 수동 재업로드가 필요합니다. 사용자 편집 보호와 SC-651의 검색 안내를 유지합니다.
+
 ## 0.2.5 검색 결과의 중복 조회 제거 (SC-651)
 
 - 단순 카드 찾기는 제목·본문을 모두 검색하는 `search_cards`, 복합 표현·범위·근거 구절·줄 번호 조사는 `explore_cards`로 안내합니다. 알려진 workspace/board/path에서 바로 검색하고, 목록의 제목·관련성·링크가 충분하면 종료합니다. 모호한 카드만 추가로 읽도록 MCP instructions·compact metadata·Skill·가이드·README를 맞춥니다.
