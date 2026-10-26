@@ -1,12 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, writeFile, readFile, rm, realpath, readdir, symlink, lstat } from 'node:fs/promises';
+import { chmod, mkdtemp, mkdir, writeFile, readFile, rm, realpath, readdir, symlink, lstat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { parse as parseToml } from 'smol-toml';
 import { parse as parseJsonc } from 'jsonc-parser';
 import { unzipSync, strFromU8 } from 'fflate';
-import { setup, type SetupOptions } from '../src/setup.js';
+import { refreshManagedSetup, setup, type SetupOptions } from '../src/setup.js';
 import { clientConfig } from '../src/install.js';
 
 async function fixture(t: { after: (callback: () => Promise<void>) => void }) {
@@ -38,6 +38,101 @@ async function tree(root: string, prefix = ''): Promise<Record<string, string>> 
   }
   return entries;
 }
+
+for (const client of ['codex', 'claude-code', 'cursor']) {
+  test(`${client}: accepts manually merged managed files only when they exactly match the incoming bundle`, async t => {
+    const { cwd, source } = await fixture(t);
+    for (const name of ['claims-runs', 'collaboration']) await put(join(source, 'references', `${name}.md`), `Previous ${name}`);
+    const installed = await setup({ client, cwd }, { source, version: '0.2.2' });
+    const config = await readFile(installed.paths.config), manifest = await readFile(installed.paths.manifest);
+    await writeFile(join(cwd, '.env'), 'STEERCARDS_AGENT_KEY=preserve-merged-skill-key\r\nOTHER=kept\r\n');
+    const env = await readFile(join(cwd, '.env'));
+    await put(join(installed.paths.skill!, 'user-notes.md'), 'Keep independent custom notes');
+    for (const name of ['SKILL.md', 'references/claims-runs.md', 'references/collaboration.md']) {
+      const incoming = `Incoming ${name}`;
+      await writeFile(join(source, name), incoming);
+      await writeFile(join(installed.paths.skill!, name), incoming);
+    }
+    await writeFile(join(source, 'references', 'work.md'), 'Remaining update');
+    assert.deepEqual(await readFile(installed.paths.manifest), manifest, 'manual merge leaves the old ownership record intact');
+    const updated = await setup({ client, cwd }, { source, version: '0.2.3' });
+    assert.equal(updated.status, 'updated');
+    assert.equal(JSON.parse(await readFile(installed.paths.manifest, 'utf8')).version, '0.2.3');
+    assert.equal(await readFile(join(installed.paths.skill!, 'references', 'work.md'), 'utf8'), 'Remaining update');
+    assert.equal(await readFile(join(installed.paths.skill!, 'user-notes.md'), 'utf8'), 'Keep independent custom notes');
+    assert.deepEqual(await readFile(installed.paths.config), config);
+    assert.deepEqual(await readFile(join(cwd, '.env')), env);
+    assert.equal((await setup({ client, cwd }, { source, version: '0.2.3' })).status, 'unchanged');
+  });
+}
+
+test('a mixed manual merge still blocks unique edits and missing managed files before writing anything', async t => {
+  const { cwd, source } = await fixture(t);
+  const options = { client: 'cursor', cwd };
+  const installed = await setup(options, { source, version: '0.2.2' });
+  await writeFile(join(source, 'SKILL.md'), 'Incoming skill');
+  await writeFile(join(installed.paths.skill!, 'SKILL.md'), 'Incoming skill');
+  await writeFile(join(source, 'references', 'work.md'), 'Incoming reference');
+  const reference = join(installed.paths.skill!, 'references', 'work.md');
+  await writeFile(reference, 'User-specific content that must survive');
+  let before = await tree(cwd);
+  await assert.rejects(setup(options, { source, version: '0.2.3' }), /Managed skill file/);
+  assert.deepEqual(await tree(cwd), before);
+  await rm(reference);
+  before = await tree(cwd);
+  await assert.rejects(setup(options, { source, version: '0.2.3' }), /Managed skill file/);
+  assert.deepEqual(await tree(cwd), before);
+  await writeFile(reference, 'Work v1');
+  const config = await readFile(installed.paths.config, 'utf8');
+  await writeFile(installed.paths.config, config.replace('npx', 'custom-command'));
+  before = await tree(cwd);
+  await assert.rejects(setup(options, { source, version: '0.2.3' }), /Managed steercards MCP fields/);
+  assert.deepEqual(await tree(cwd), before);
+});
+
+test('a concurrent edit to an already-merged file is still detected by the setup baseline', async t => {
+  const { cwd, source } = await fixture(t);
+  const options = { client: 'cursor', cwd };
+  const installed = await setup(options, { source, version: '0.2.2' });
+  const skill = join(installed.paths.skill!, 'SKILL.md');
+  await writeFile(join(source, 'SKILL.md'), 'Incoming skill');
+  await writeFile(skill, 'Incoming skill');
+  const manifest = await readFile(installed.paths.manifest), config = await readFile(installed.paths.config);
+  await assert.rejects(setup(options, { source, version: '0.2.3', beforeCommit: async () => { await writeFile(skill, 'Concurrent user edit'); } }), /changed during preflight/);
+  assert.equal(await readFile(skill, 'utf8'), 'Concurrent user edit');
+  assert.deepEqual(await readFile(installed.paths.manifest), manifest);
+  assert.deepEqual(await readFile(installed.paths.config), config);
+});
+
+test('startup accepts matching manual merges but keeps same-version and downgrade guards', async t => {
+  const { cwd, source } = await fixture(t);
+  const options = { client: 'cursor', cwd };
+  const installed = await setup(options, { source, version: '0.2.2' });
+  await writeFile(join(source, 'SKILL.md'), 'Incoming skill');
+  await writeFile(join(installed.paths.skill!, 'SKILL.md'), 'Incoming skill');
+  const before = await tree(cwd);
+  assert.equal((await refreshManagedSetup(options, { source, version: '0.2.2' })).status, 'skipped');
+  assert.equal((await refreshManagedSetup(options, { source, version: '0.2.1' })).status, 'skipped');
+  assert.deepEqual(await tree(cwd), before);
+  assert.equal((await refreshManagedSetup(options, { source, version: '0.2.3' })).status, 'updated');
+  assert.equal(JSON.parse(await readFile(installed.paths.manifest, 'utf8')).version, '0.2.3');
+});
+
+test('a matching manual merge does not bypass read-only protection for the remaining startup update', async t => {
+  const { cwd, source } = await fixture(t);
+  const options = { client: 'cursor', cwd };
+  const installed = await setup(options, { source, version: '0.2.2' });
+  await writeFile(join(source, 'SKILL.md'), 'Incoming skill');
+  await writeFile(join(installed.paths.skill!, 'SKILL.md'), 'Incoming skill');
+  await writeFile(join(source, 'references', 'work.md'), 'Incoming reference');
+  const reference = join(installed.paths.skill!, 'references', 'work.md');
+  await chmod(reference, 0o444);
+  try {
+    const before = await tree(cwd);
+    assert.equal((await refreshManagedSetup(options, { source, version: '0.2.3' })).status, 'blocked');
+    assert.deepEqual(await tree(cwd), before);
+  } finally { await chmod(reference, 0o600); }
+});
 
 for (const client of ['codex', 'claude-code', 'cursor']) {
   test(`${client}: install, reload aliases/options, upgrade, and preserve unrelated data`, async t => {

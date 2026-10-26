@@ -1,5 +1,16 @@
 # Verification — 2026-10-19
 
+## Manually merged managed skills — 0.2.3 candidate (SC-644)
+
+Verified on macOS / Node 22.19.0 / npm 10.9.3: strict checking/build, 101 source tests, the packed suite (10 passed, 1 Windows-only skip), Skill validation and diff checks passed. The branch starts from main `99285c6` (0.2.2); no existing project installation was modified during these fixture checks.
+
+- The new acceptance regressions fail on 0.2.2 with the original managed-file conflict. After the fix, all three code clients accept a current file that differs from its old manifest hash only when it exactly matches the incoming bundle. Mixed already-merged and untouched old files update safely, independent custom notes survive, and config/env bytes stay unchanged.
+- Distinct user edits, missing managed files and edited MCP configuration still block before any planned write. A concurrent edit to an already-matched file is caught by the existing baseline. A matching file does not bypass remaining read-only startup files, and same-version/downgrade skips remain intact. Existing lock, symlink, rollback and startup tests pass unchanged.
+- A fresh tarball installation creates a real 0.2.2-style manifest through the packed setup helper, manually copies only the candidate SKILL/claims-runs/collaboration files without changing manifest hashes, and reruns the actual installed CLI. Setup updates the remaining reference and manifest, preserves config/env/custom notes and reruns unchanged. A subsequent unique user edit blocks with all checked files intact and no key/content leakage.
+- Official Skill guidance preserves ownership/profile checks before work, clearing after final authorized writes, and no key/profile switching to bypass authorization failures. Recovery instructions require backup and manual comparison; this does not implement arbitrary custom-text merging. CI matrix, public release and actual project recovery remain the release lead's follow-up.
+
+## Initial package verification — 2026-10-19
+
 Tested on macOS with Node.js 22.19.0. GitHub Actions is configured for Linux, macOS and Windows on Node 22 and 24; those remote matrix runs have not run yet.
 
 - TypeScript strict checking and build passed.

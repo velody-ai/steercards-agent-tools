@@ -1,6 +1,6 @@
 {
   "name": "@steercards/agent-tools",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "description": "Progressive MCP discovery, CLI and agent skills for Steercards",
   "type": "module",
   "license": "MIT",
