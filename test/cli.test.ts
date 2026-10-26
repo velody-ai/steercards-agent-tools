@@ -72,6 +72,10 @@ test('CLI rejects invalid exploration arguments before connecting', () => {
     ['explore', 'ls /'],
     ...['0', '-1', '1.2', '1e2', '9007199254740992', 'abc'].map(workspace => ['explore', '--workspace', workspace, 'ls /']),
     ...['0', '16001', '1.5', 'NaN'].map(maxChars => ['explore', '--workspace', '1', '--max-chars', maxChars, 'ls /']),
+    ...['0', '-1', '1.5', '9007199254740992', 'abc'].map(board => ['explore', '--workspace', '1', '--board', board, 'ls /']),
+    ...['', ' ', '0', '9007199254740992'].map(status => ['explore', '--workspace', '1', '--status', status, 'ls /']),
+    ['explore', '--workspace', '1', ...Array.from({ length: 21 }, () => ['--status', 'In progress']).flat(), 'ls /'],
+    ['explore', '--workspace', '1', '--archived', 'true', 'ls /'],
     ['explore', '--workspace', '1', '--cursor', '', 'ls /'],
     ['explore', '--workspace', '1', 'ls', '/'],
     ['explore', '--workspace', '1', '   '],
@@ -80,6 +84,10 @@ test('CLI rejects invalid exploration arguments before connecting', () => {
     ['explore', '--workspace', '1', '--mode', 'full', 'ls /'],
     ['call', 'explore_cards', '--workspace', '1'],
     ['doctor', '--cursor', 'opaque'],
+    ['doctor', '--include-relations'],
+    ['tools', '--status', 'In progress'],
+    ['call', 'explore_cards', '--board', '1'],
+    ['setup', '--client', 'codex', '--archived', 'all'],
     ['setup', '--client', 'codex', '--max-chars', '100'],
   ]) {
     const result = cli(args);

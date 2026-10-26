@@ -155,9 +155,13 @@ test('packed npm launchers preserve project env-file semantics', { timeout: 2400
 
   await t.test('packed exploration CLI and compact/full MCP preserve bounded pages and source metadata', async () => {
     const command = 'rg -n expired /projects/7/boards/19/cards';
-    const sources = [{ cardId: 42, path: '/projects/7/boards/19/cards/SC-42/card.md', cardKey: 'SC-42' }];
-    const first = { ok: true, data: { workspaceId: 123, output: '', complete: false, nextCursor: 'opaque-cursor.2', stopReason: 'scan_limit', exitCode: null, sources: [] } };
-    const second = { ok: true, data: { workspaceId: 123, output: `${sources[0].path}:12:session expired\n`, complete: true, nextCursor: null, stopReason: null, exitCode: 0, sources } };
+    const sources = [{ cardId: 42, path: '/projects/7/boards/19/cards/SC-42/card.md', cardKey: 'SC-42', url: 'https://steercards.example/hello/SC-42', archivedAt: null,
+      statuses: [{ propertyId: 1, propertyName: 'Status', optionId: 456, name: 'In progress', section: 'in_progress' }],
+      relations: { parent: null, children: [], childCount: 0, childrenComplete: true } }];
+    const passage = `${sources[0].path}:12:session expired 🔑\n`;
+    const matches = [{ cardId: 42, snippets: [{ path: sources[0].path, kind: 'card', startLine: 12, endLine: 12, matchedLines: [12], outputStart: 0, outputEnd: passage.length, partial: false }] }];
+    const first = { ok: true, data: { workspaceId: 123, output: '', complete: false, nextCursor: 'opaque-cursor.2', stopReason: 'scan_limit', exitCode: null, sources: [], matches: [] } };
+    const second = { ok: true, data: { workspaceId: 123, output: passage, complete: true, nextCursor: null, stopReason: null, exitCode: 0, sources, matches } };
     const noMatch = { ok: true, data: { workspaceId: 123, output: '', complete: true, nextCursor: null, stopReason: null, exitCode: 1, sources: [] } };
     const failure = { ok: false, error: { code: 'UNSUPPORTED_COMMAND', message: 'Unsupported command.', status: 400 } };
     const calls = [];
@@ -171,7 +175,7 @@ test('packed npm launchers preserve project env-file semantics', { timeout: 2400
       if (rpc.id === undefined) { res.writeHead(202); res.end(); return; }
       let result;
       if (rpc.method === 'initialize') result = { protocolVersion: '2025-11-25', capabilities: { tools: {} }, serverInfo: { name: 'exploration-fixture', version: '1' } };
-      else if (rpc.method === 'tools/list') result = { tools: [{ name: 'explore_cards', description: 'Read-only directory card content explorer.', inputSchema: { type: 'object', properties: { workspaceId: { type: 'integer' }, command: { type: 'string' }, cursor: { type: 'string' }, maxChars: { type: 'integer' } }, required: ['workspaceId', 'command'] } }] };
+      else if (rpc.method === 'tools/list') result = { tools: [{ name: 'explore_cards', description: 'Read-only directory card content explorer.', inputSchema: { type: 'object', properties: { workspaceId: { type: 'integer' }, command: { type: 'string' }, cursor: { type: 'string' }, maxChars: { type: 'integer' }, boardId: { type: 'integer' }, status: { anyOf: [{ type: 'string' }, { type: 'integer' }, { type: 'array', items: { anyOf: [{ type: 'string' }, { type: 'integer' }] } }] }, archived: { type: 'string', enum: ['active', 'archived', 'all'] }, includeRelations: { type: 'boolean' } }, required: ['workspaceId', 'command'] } }] };
       else {
         assert.equal(rpc.method, 'tools/call');
         assert.equal(rpc.params.name, 'explore_cards');
@@ -191,12 +195,22 @@ test('packed npm launchers preserve project env-file semantics', { timeout: 2400
       assert.deepEqual(calls.at(-1), { workspaceId: 123, command, maxChars: 2000 });
       assert.deepEqual(json(await run(bin, ['explore', '--workspace=123', command, '--cursor', first.data.nextCursor, '--max-chars=2000', ...options], { cwd: consumer })), envelope(second));
       assert.deepEqual(calls.at(-1), { workspaceId: 123, command, cursor: first.data.nextCursor, maxChars: 2000 });
+      const filters = ['--board', '19', '--status', 'In progress', '--status', '456', '--archived', 'active', '--include-relations'];
+      const filterArgs = { boardId: 19, status: ['In progress', 456], archived: 'active', includeRelations: true };
+      assert.deepEqual(json(await run(bin, ['explore', '--workspace', '123', command, '--max-chars', '2000', ...filters, ...options], { cwd: consumer })), envelope(first));
+      assert.deepEqual(calls.at(-1), { workspaceId: 123, command, maxChars: 2000, ...filterArgs });
+      assert.deepEqual(json(await run(bin, ['explore', '--workspace', '123', command, '--max-chars', '2000', '--cursor', first.data.nextCursor, ...filters, ...options], { cwd: consumer })), envelope(second));
+      assert.deepEqual(calls.at(-1), { workspaceId: 123, command, maxChars: 2000, cursor: first.data.nextCursor, ...filterArgs });
+      for (const [value, expected] of [['456', 456], ['In progress', 'In progress']]) {
+        json(await run(bin, ['explore', '--workspace', '123', command, '--status', value, '--archived', 'archived', ...options], { cwd: consumer }));
+        assert.deepEqual(calls.at(-1), { workspaceId: 123, command, status: expected, archived: 'archived' });
+      }
       assert.deepEqual(json(await run(bin, ['explore', '--workspace', '123', 'rg absent /projects', ...options], { cwd: consumer })), envelope(noMatch));
       assert.deepEqual(calls.at(-1), { workspaceId: 123, command: 'rg absent /projects' });
       const failed = await run(bin, ['explore', '--workspace', '123', 'unsupported', ...options], { cwd: consumer });
       assert.equal(failed.status, 1);
       assert.deepEqual(JSON.parse(failed.stdout), envelope(failure));
-      assert.equal(calls.length, 4, 'each CLI request calls upstream once');
+      assert.equal(calls.length, 8, 'each CLI request calls upstream once, without automatic listings or body reads');
       for (const mode of ['compact', 'full']) {
         const transport = new StdioClientTransport({ command: process.execPath, args: ['--', join(consumer, 'node_modules', '@steercards', 'agent-tools', 'dist', 'cli.js'), 'serve', '--mode', mode, ...options], cwd: consumer, env, stderr: 'pipe' });
         const client = new Client({ name: 'exploration-package', version: '1' });
@@ -206,7 +220,7 @@ test('packed npm launchers preserve project env-file semantics', { timeout: 2400
           const tools = (await client.listTools()).tools;
           assert.equal(tools.length, mode === 'compact' ? 4 : 1);
           if (mode === 'compact') assert.match(tools.find(tool => tool.name === 'steercards_search_tools').description, /explore_cards/);
-          const args = { workspaceId: 123, command, cursor: first.data.nextCursor, maxChars: 2000 };
+          const args = { workspaceId: 123, command, cursor: first.data.nextCursor, maxChars: 2000, ...filterArgs };
           const result = await client.callTool(mode === 'compact'
             ? { name: 'steercards_call_tool', arguments: { name: 'explore_cards', arguments: args } }
             : { name: 'explore_cards', arguments: args });
@@ -222,7 +236,7 @@ test('packed npm launchers preserve project env-file semantics', { timeout: 2400
           }
         } finally { await client.close(); }
       }
-      assert.equal(calls.length, 6);
+      assert.equal(calls.length, 10);
       const zip = join(temp, 'exploration-skill.zip');
       json(await run(bin, ['skill', 'export', '--output', zip], { cwd: consumer }));
       const files = unzipSync(await readFile(zip));

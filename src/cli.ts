@@ -18,7 +18,8 @@ steercards serve [--mode compact|full] [--client CLIENT]
 steercards tools [query] [--limit 10]
 steercards describe NAME
 steercards call NAME [--json JSON | --file PATH | --stdin]
-steercards explore --workspace ID COMMAND [--cursor TOKEN] [--max-chars N]
+steercards explore --workspace ID COMMAND [--board ID] [--status VALUE ...]
+  [--archived active|archived|all] [--include-relations] [--cursor TOKEN] [--max-chars N]
 steercards doctor [--connect]
 steercards config CLIENT [--local] [--mode compact|full]
 steercards skill install --client CLIENT [--global]
@@ -45,8 +46,13 @@ config only prints a snippet and never edits host settings.
 Claude Desktop: skill ZIP updates still require manual upload.
 Full tool responses are JSON; tool/product errors exit nonzero. Writes are never retried.
 explore forwards one quoted read-only virtual command to explore_cards, not a shell.
-It preserves complete, nextCursor, stopReason, exitCode and sources in the JSON result.
-Continue with the same workspace/command and --cursor until complete is true.
+Use search_cards for simple title/body finding; explore for expressions and line evidence.
+Start at a known board/path; ls only when its location is unknown. Stop when snippets suffice.
+--status accepts an option ID or exact name; repeat it for up to 20 alternatives.
+--archived defaults to all upstream; --include-relations adds parent/child summaries.
+Full JSON preserves complete, nextCursor, stopReason, exitCode, sources and grouped matches.
+Continue only as needed, with the same command/all options and exact --cursor.
+Disclose incomplete coverage when stopping before complete is true.
 `;
 
 function output(value: unknown) { process.stdout.write(JSON.stringify(value, null, 2) + '\n'); }
@@ -92,6 +98,8 @@ async function main() {
     client: { type: 'string' }, global: { type: 'boolean' }, output: { type: 'string' },
     limit: { type: 'string' }, connect: { type: 'boolean' }, local: { type: 'boolean' },
     workspace: { type: 'string' }, cursor: { type: 'string' }, 'max-chars': { type: 'string' },
+    board: { type: 'string' }, status: { type: 'string', multiple: true },
+    archived: { type: 'string' }, 'include-relations': { type: 'boolean' },
     'dry-run': { type: 'boolean' }, npx: { type: 'boolean' },
     'setup-code-stdin': { type: 'boolean' }, 'replace-agent-key': { type: 'boolean' },
     'keep-agent-key': { type: 'boolean' }, 'confirm-existing-key': { type: 'boolean' },
@@ -102,8 +110,8 @@ async function main() {
   const [command, name, ...extra] = positionals;
   const options = { cwd: values.cwd, envFile: values['env-file'], url: values.url };
   if (extra.length) throw new Error('Unexpected extra arguments. Use --help.');
-  if (command !== 'explore' && [values.workspace, values.cursor, values['max-chars']].some(value => value !== undefined)) {
-    throw new Error('--workspace, --cursor and --max-chars are only supported by explore.');
+  if (command !== 'explore' && [values.workspace, values.cursor, values['max-chars'], values.board, values.status, values.archived, values['include-relations']].some(value => value !== undefined)) {
+    throw new Error('--workspace, --cursor, --max-chars, --board, --status, --archived and --include-relations are only supported by explore.');
   }
   if (command === 'setup') {
     if (name) throw new Error('Use setup --client CLIENT.');
@@ -174,12 +182,29 @@ async function main() {
     if (values['max-chars'] !== undefined && (!/^\d+$/.test(values['max-chars']) || Number(values['max-chars']) < 1 || Number(values['max-chars']) > 16000)) {
       throw new Error('--max-chars must be an integer from 1 to 16000.');
     }
+    if (values.board !== undefined && (!/^\d+$/.test(values.board) || !Number.isSafeInteger(Number(values.board)) || Number(values.board) < 1)) {
+      throw new Error('--board must be a positive safe integer.');
+    }
+    if (values.archived !== undefined && !['active', 'archived', 'all'].includes(values.archived)) {
+      throw new Error('--archived must be active, archived or all.');
+    }
+    const statuses = values.status?.map(value => {
+      if (!value.trim()) throw new Error('--status must be a nonempty option name or positive safe integer ID.');
+      if (!/^\d+$/.test(value)) return value;
+      if (!Number.isSafeInteger(Number(value)) || Number(value) < 1) throw new Error('--status IDs must be positive safe integers.');
+      return Number(value);
+    });
+    if (statuses && statuses.length > 20) throw new Error('--status accepts at most 20 alternatives.');
     for (const option of ['json', 'file', 'stdin', 'limit', 'output', 'connect', 'client', 'global', 'local', 'mode'] as const) {
       if (values[option] !== undefined) throw new Error(`--${option} is not supported by explore.`);
     }
     args = { workspaceId: Number(values.workspace), command: name,
       ...(values.cursor !== undefined ? { cursor: values.cursor } : {}),
       ...(values['max-chars'] !== undefined ? { maxChars: Number(values['max-chars']) } : {}),
+      ...(values.board !== undefined ? { boardId: Number(values.board) } : {}),
+      ...(statuses !== undefined ? { status: statuses.length === 1 ? statuses[0] : statuses } : {}),
+      ...(values.archived !== undefined ? { archived: values.archived } : {}),
+      ...(values['include-relations'] !== undefined ? { includeRelations: values['include-relations'] } : {}),
     };
   }
   if (command === 'call') {
