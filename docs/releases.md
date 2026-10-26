@@ -2,6 +2,12 @@
 
 공개 패키지는 [`@steercards/agent-tools`](https://www.npmjs.com/package/@steercards/agent-tools), 소스는 [`velody-ai/steercards-agent-tools`](https://github.com/velody-ai/steercards-agent-tools)에서 관리합니다. 일반 CI는 검증을 수행하고, 안정 버전의 GitHub Release를 게시하면 `.github/workflows/publish.yml`이 npm에 게시합니다. 태그 push나 main 병합만으로는 게시하지 않습니다.
 
+## 0.2.5 검색 결과의 중복 조회 제거 (SC-651)
+
+- 단순 카드 찾기는 제목·본문을 모두 검색하는 `search_cards`, 복합 표현·범위·근거 구절·줄 번호 조사는 `explore_cards`로 안내합니다. 알려진 workspace/board/path에서 바로 검색하고, 목록의 제목·관련성·링크가 충분하면 종료합니다. 모호한 카드만 추가로 읽도록 MCP instructions·compact metadata·Skill·가이드·README를 맞춥니다.
+- `explore` CLI에 `--board`, 반복 `--status`, `--archived active|archived|all`, `--include-relations`를 추가합니다. 기존 입력과 전체 MCP JSON을 보존하고, 카드별 문맥 묶음·URL·실제 상태·선택 관계 요약을 활용하도록 설명합니다. 커서는 명령과 모든 입력 옵션을 그대로 유지해서 이어갑니다.
+- 앱 서버의 확장 `explore_cards` 배포가 새 플래그 사용보다 선행되어야 합니다. 기존 설치의 compact metadata/CLI는 npm 갱신과 MCP 재연결, 이미 읽은 Skill은 새 세션/reload가 필요합니다. 관리 Skill은 공식 setup 갱신 절차를 사용하며 고유 사용자 편집을 덮어쓰지 않습니다. Desktop ZIP 재업로드는 수동입니다.
+
 ## 0.2.4 관련 카드의 파일 우선 탐색 안내
 
 - 관련 카드는 `explore_cards`로 디렉터리부터 탐색합니다. `ls`의 디렉터리·카드 제목 메타데이터와 `find`의 파일 경로·키를 구분하고, `rg -g card.md`로 제목·본문을 찾은 뒤 `cat`/줄 범위로 읽으며 다음 범위를 점진적으로 좁힙니다.

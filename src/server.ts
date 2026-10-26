@@ -24,7 +24,16 @@ const cardWorkInstructions = [
   'Status refresh does not renew a claim lease or send a run heartbeat.',
   'Do not create a badge for read-only lookups or assignment alone. Describe these tools for their current inputs.',
 ].join(' ');
-const instructions = 'Steercards tools use progressive discovery. In compact mode search tool metadata, describe the selected tool to obtain its current schema, then call it with matching arguments. For related-card discovery, start with explore_cards: use ls for directories and card-title metadata, find for file paths/keys only, rg -g card.md for related terms in card titles/bodies, then cat or sed to progressively read promising files and narrow the scope using their content. Comments are secondary: read comments.md only when the card body is insufficient or the user asks for history/discussion. Deduplicate by stable card ID/current key and report supporting lines, searched scope and cursor limits; this is not semantic search, and incomplete pages cannot establish an exhaustive result. Read the exploration guide for directory navigation and continuation. Use direct lookup for known keys, search_cards for status/approval filters and archived-card inclusion, and list_participant_cards for active board cards by participant. Inspect get_board and live schemas for other property structure. Read the Steercards guide for workflows. Tool schemas are fetched from the authenticated upstream server. Respect isError and structuredContent. Never automatically retry a mutation after a network failure; read current state first. The upstream rate limit is 120 requests per minute; follow Retry-After. ' + cardWorkInstructions;
+const cardDiscoveryInstructions = [
+  'Use search_cards for simple card finding: its query searches both titles and bodies, with supported scope/status/approval/archive filters.',
+  'Use explore_cards for multiple expressions, scoped investigation, evidence passages or line numbers; search card.md with rg, optionally -C 2 for context.',
+  'Start directly in a known workspace/board/path. Use ls only to discover an unknown location or inspect directory/card-title metadata; find returns paths/keys only. Do not repeat known directory listings.',
+  'If titles, snippets and source URLs establish relevance, return the card list immediately. Do not reread matching content with cat/get_card merely to confirm it; read only ambiguous cards or missing passages with targeted sed/cat. Go deeper only for detailed analysis.',
+  'Comments are secondary when the body is insufficient or history/discussion is requested.',
+  'Deduplicate by stable card ID/current key; preserve source URLs/statuses, grouped matches, searched scope and cursor limits. Continue an incomplete page with the same command and all input options, or disclose partial results. This is not semantic search or proof of all-card coverage.',
+  'Use direct lookup for known keys, list_participant_cards for active board cards by participant, and get_board/live schemas for other property structure. Read the exploration guide when needed.',
+].join(' ');
+const instructions = 'Steercards tools use progressive discovery. In compact mode search tool metadata, describe the selected tool to obtain its current schema, then call it with matching arguments. ' + cardDiscoveryInstructions + ' Read the Steercards guide for workflows. Tool schemas are fetched from the authenticated upstream server. Respect isError and structuredContent. Never automatically retry a mutation after a network failure; read current state first. The upstream rate limit is 120 requests per minute; follow Retry-After. ' + cardWorkInstructions;
 
 export async function getGuide(topic = 'overview'): Promise<string> {
   if (!guideTopics.includes(topic as typeof guideTopics[number])) {
@@ -37,7 +46,7 @@ export async function getGuide(topic = 'overview'): Promise<string> {
 const compactTools: Tool[] = [
   {
     name: 'steercards_search_tools', title: 'Search Steercards tools',
-    description: 'Search the live upstream catalog by tool name and description. For related-card discovery, find explore_cards and read the exploration guide: ls shows directories/card-title metadata, find shows file paths/keys only; search card.md titles/bodies and progressively read promising files. Comments are secondary when bodies are insufficient or history/discussion is requested. Exact-key or filter-only lookups use the relevant direct tool. Returns compact metadata without schemas; describe a match before calling it. An empty query browses the catalog.',
+    description: 'Search the live upstream catalog by tool name and description. ' + cardDiscoveryInstructions + ' Returns compact metadata without schemas; describe a match before calling it. An empty query browses the catalog.',
     inputSchema: { type: 'object', properties: { query: { type: 'string' }, limit: { type: 'integer', minimum: 1, maximum: 100, default: 10 } }, required: ['query'], additionalProperties: false },
     annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: true },
   },
