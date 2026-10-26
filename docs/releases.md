@@ -2,6 +2,12 @@
 
 공개 패키지는 [`@steercards/agent-tools`](https://www.npmjs.com/package/@steercards/agent-tools), 소스는 [`velody-ai/steercards-agent-tools`](https://github.com/velody-ai/steercards-agent-tools)에서 관리합니다. 일반 CI는 검증을 수행하고, 안정 버전의 GitHub Release를 게시하면 `.github/workflows/publish.yml`이 npm에 게시합니다. 태그 push나 main 병합만으로는 게시하지 않습니다.
 
+## 0.2.3 수동 병합한 관리 스킬의 갱신 복구 (SC-644)
+
+- 이전 설치 해시와 달라도 현재 관리 파일이 새 배포본의 같은 파일과 byte 단위로 같으면 이미 병합된 파일로 인정합니다. 나머지 갱신과 설치 기록 저장은 기존 해시·잠금·baseline·롤백 절차를 사용합니다.
+- 고유 사용자 수정·파일 누락·설정 불일치·symlink·경합·권한 보호와 startup의 같은 버전/downgrade 제한은 유지합니다. 파일을 강제 덮어쓰거나 설치 기록을 삭제·임의 수정하지 않습니다.
+- 오류·README·Skill에 백업 후 최신 bundle과 수동 비교·병합하고 정확히 일치한 파일은 setup을 재실행할 수 있음을 안내합니다. 공식 Skill은 착수 전 점유/프로필 확인, 마지막 권한 있는 쓰기 후 clear, 권한 오류에서 키/프로필 변경 우회 금지를 보존합니다.
+
 ## 0.2.2 카드 탐색 필터 안내 수정 (SC-635)
 
 - `search_cards`는 상태·승인 필터와 보관 카드 포함 여부에 사용하고, 참여자는 `list_participant_cards`로 보드의 활성 카드를 조회하도록 안내합니다. 다른 속성 구조는 `get_board`와 사용 가능한 도구의 현재 스키마로 확인합니다.

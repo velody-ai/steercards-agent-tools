@@ -3,7 +3,7 @@ import { spawn } from 'node:child_process';
 import { mkdtemp, mkdir, readFile, readdir, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { delimiter, dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { test } from 'node:test';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
@@ -76,6 +76,40 @@ test('packed npm launchers preserve project env-file semantics', { timeout: 2400
   const doctor = ['doctor', '--cwd', project];
 
   assert.equal((await run(bin, ['--version'], { cwd: consumer })).stdout.trim(), manifest.version);
+
+  await t.test('packed setup accepts exact manual merges and preserves distinct local edits', async () => {
+    const upgradeProject = join(temp, 'manual merge project'), oldSource = join(temp, 'previous skill');
+    await mkdir(upgradeProject); await mkdir(join(oldSource, 'references'), { recursive: true });
+    for (const name of ['SKILL.md', 'references/claims-runs.md', 'references/collaboration.md', 'references/cards.md']) await writeFile(join(oldSource, name), `Previous ${name}`);
+    const installedRoot = join(consumer, 'node_modules', '@steercards', 'agent-tools');
+    const { setup: packedSetup } = await import(pathToFileURL(join(installedRoot, 'dist', 'setup.js')).href);
+    const installed = await packedSetup({ client: 'cursor', cwd: upgradeProject }, { source: oldSource, version: '0.2.2' });
+    const envPath = join(upgradeProject, '.env'), envBytes = 'STEERCARDS_AGENT_KEY=manual-merge-fixture-key\r\nOTHER=preserved\r\n';
+    await writeFile(envPath, envBytes);
+    await writeFile(join(installed.paths.skill, 'user-notes.md'), 'Preserve custom notes');
+    const config = await readFile(installed.paths.config), previousManifest = await readFile(installed.paths.manifest);
+    for (const name of ['SKILL.md', 'references/claims-runs.md', 'references/collaboration.md']) await writeFile(join(installed.paths.skill, name), await readFile(join(installedRoot, 'skills', 'steercards', name)));
+    assert.deepEqual(await readFile(installed.paths.manifest), previousManifest);
+    const setupArgs = ['setup', '--client', 'cursor', '--cwd', upgradeProject];
+    const report = json(await run(bin, setupArgs, { cwd: consumer }));
+    assert.equal(report.status, 'updated');
+    assert.equal(report.version, manifest.version);
+    assert.equal(JSON.parse(await readFile(installed.paths.manifest, 'utf8')).version, manifest.version);
+    assert.deepEqual(await readFile(join(installed.paths.skill, 'references', 'cards.md')), await readFile(join(installedRoot, 'skills', 'steercards', 'references', 'cards.md')));
+    assert.equal(await readFile(join(installed.paths.skill, 'user-notes.md'), 'utf8'), 'Preserve custom notes');
+    assert.deepEqual(await readFile(installed.paths.config), config);
+    assert.equal(await readFile(envPath, 'utf8'), envBytes);
+    assert.equal(json(await run(bin, setupArgs, { cwd: consumer })).status, 'unchanged');
+    await writeFile(join(installed.paths.skill, 'SKILL.md'), 'Unique user content');
+    const protectedPaths = [installed.paths.config, installed.paths.manifest, envPath, join(installed.paths.skill, 'SKILL.md'), join(installed.paths.skill, 'references', 'cards.md')];
+    const snapshots = await Promise.all(protectedPaths.map(path => readFile(path)));
+    const blocked = await run(bin, setupArgs, { cwd: consumer });
+    assert.equal(blocked.status, 1);
+    assert.match(JSON.parse(blocked.stderr).error, /Managed skill file/);
+    assert.deepEqual(await Promise.all(protectedPaths.map(path => readFile(path))), snapshots);
+    assert.ok(!`${blocked.stdout}${blocked.stderr}`.includes('manual-merge-fixture-key'));
+    assert.ok(!`${blocked.stdout}${blocked.stderr}`.includes('Unique user content'));
+  });
 
   await t.test('installed bin reads default, relative, equals and absolute paths outside process cwd', async () => {
     assert.equal(json(await run(bin, doctor, { cwd: consumer })).url, 'https://default.example/api/mcp');
