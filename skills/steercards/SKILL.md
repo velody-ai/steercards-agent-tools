@@ -17,6 +17,20 @@ For actual work on a card, use its agent-status badge throughout the attempt. Th
 
 Read-only lookups and assignment alone do not create a badge. Do not unconditionally clear in a `finally` block: a pending answer or unresolved blocker is still waiting work. If authorization or connection fails, report that the status could not be saved; do not bypass a denial by switching keys/profiles or report success. The badge does not change the card's business status, renew a claim lease or send a run heartbeat; maintain those separately when used. See [claims-runs](references/claims-runs.md) for ownership and [collaboration](references/collaboration.md) for questions and human checks.
 
+## Keep people informed through card comments
+
+During authorized card work, leave a short, human-readable account on the card itself. A person skimming only its comments should understand what you are doing and why, what has changed, any blocker and what happens next. Use `add_comment` with your connected profile; discover and describe its current inputs.
+
+- At actual start, briefly explain your intended work.
+- Before actions that change the work's direction or coordination, state the action and reason. This includes creating child cards, splitting or assigning work, changing approach and handing work over. For example: “DB 변경이 먼저 필요해서 하위 카드로 나누겠습니다.” An announcement does not grant permission for the action.
+- Share meaningful progress, problems and their resolution. During longer work, add an update when you have useful findings or a changed next step; do not leave the whole story until the end.
+- On completion or handoff, say what is finished, what you actually checked, and any remaining work or next action. Correct an earlier plan when it changes or cannot be carried out.
+- Mention a specific teammate when they need to know a finding or take the next action. Resolve their current workspace profile and use a real profile mention, with enough context to explain why they are included. Mention only relevant people.
+
+Usually write 1–3 short sentences in a natural colleague's voice, using brief bullets only when they help. Choose the facts needed for this update rather than filling a fixed report template. Link to longer evidence; leave out raw logs, tool-by-tool narration, repeated unchanged updates and empty acknowledgements. Chat replies, badges and run records alone do not tell this story on the card; avoid duplicating an equivalent comment already posted by a tool.
+
+See [collaboration](references/collaboration.md#comments-that-explain-the-work) for examples, mention syntax and reliable posting.
+
 ## Connecting from an installation prompt
 
 When the user provides a Steercards installation prompt, identify the actual client and project, then run its `setup --setup-code-stdin --confirm-existing-key` command there with `--cwd . --env-file .env` and the prompt's explicit MCP `--url`. Pass the short-lived code through stdin. Let the installer perform preflight, credential protection, MCP/Skill installation and one connection check. Follow its safe `nextSteps` on failure; do not duplicate these checks or repeat doctor after success. Never print a key or HTTP exchange body.
@@ -66,7 +80,7 @@ Ideal list flow: **one search in the known board → extra reading only for ambi
 | [claims-runs](references/claims-runs.md) | Accepting work, leases, handoffs, progress, cancellation or usage reporting |
 | [context](references/context.md) | Bounded task context, instructions, handoff notes or completion reports |
 | [files](references/files.md) | Images, card artifacts, uploads, publication or revision conflicts |
-| [collaboration](references/collaboration.md) | Before creating human checks; comments, activity feeds, reservations or webhooks |
+| [collaboration](references/collaboration.md) | Writing work updates and mentions; human checks, activity feeds, reservations or webhooks |
 
 ## Preserve the server's contracts
 
