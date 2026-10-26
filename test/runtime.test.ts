@@ -255,7 +255,7 @@ test('compact and full local MCP modes expose their contract and preserve upstre
         : { name: 'read_card', arguments: { id: 17 } } }, CallToolResultSchema);
       assert.deepEqual(called, success);
       const resources = await client.listResources();
-      assert.equal(resources.resources.length, 8);
+      assert.equal(resources.resources.length, 9);
       const guide = await client.readResource({ uri: 'steercards://guide/overview' });
       assert.match(String(guide.contents[0].text), /Steercards/i);
     });
@@ -289,7 +289,7 @@ test('real stdio transport keeps stdout as MCP frames and closes upstream on EOF
 
 test('guides reject path traversal and support each documented topic', async () => {
   await assert.rejects(getGuide('../../etc/passwd'), /Unknown guide topic/);
-  for (const topic of ['overview', 'discovery', 'cards', 'profiles', 'claims-runs', 'context', 'files', 'collaboration']) {
+  for (const topic of ['overview', 'discovery', 'exploration', 'cards', 'profiles', 'claims-runs', 'context', 'files', 'collaboration']) {
     assert.ok((await getGuide(topic)).length > 30);
   }
 });

@@ -66,6 +66,30 @@ test('CLI rejects ambiguous and invalid call input before connecting', () => {
   }
 });
 
+test('CLI rejects invalid exploration arguments before connecting', () => {
+  for (const args of [
+    ['explore', '--workspace', '1'],
+    ['explore', 'ls /'],
+    ...['0', '-1', '1.2', '1e2', '9007199254740992', 'abc'].map(workspace => ['explore', '--workspace', workspace, 'ls /']),
+    ...['0', '16001', '1.5', 'NaN'].map(maxChars => ['explore', '--workspace', '1', '--max-chars', maxChars, 'ls /']),
+    ['explore', '--workspace', '1', '--cursor', '', 'ls /'],
+    ['explore', '--workspace', '1', 'ls', '/'],
+    ['explore', '--workspace', '1', '   '],
+    ['explore', '--workspace', '1', '--json', '{}', 'ls /'],
+    ['explore', '--workspace', '1', '--stdin', 'ls /'],
+    ['explore', '--workspace', '1', '--mode', 'full', 'ls /'],
+    ['call', 'explore_cards', '--workspace', '1'],
+    ['doctor', '--cursor', 'opaque'],
+    ['setup', '--client', 'codex', '--max-chars', '100'],
+  ]) {
+    const result = cli(args);
+    assert.equal(result.status, 1, JSON.stringify(args));
+    assert.equal(result.stdout, '');
+    assert.equal(JSON.parse(result.stderr).ok, false);
+    assert.doesNotMatch(result.stderr, /Agent Key is required/);
+  }
+});
+
 test('setup installs MCP and skill with one command, preserves dotenv, and reruns unchanged', async t => {
   const cwd = await realpath(await mkdtemp(join(tmpdir(), 'steercards-setup-cli-')));
   t.after(() => rm(cwd, { recursive: true, force: true }));

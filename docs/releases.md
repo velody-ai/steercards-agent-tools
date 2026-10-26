@@ -2,6 +2,12 @@
 
 공개 패키지는 [`@steercards/agent-tools`](https://www.npmjs.com/package/@steercards/agent-tools), 소스는 [`velody-ai/steercards-agent-tools`](https://github.com/velody-ai/steercards-agent-tools)에서 관리합니다. 일반 CI는 검증을 수행하고, 안정 버전의 GitHub Release를 게시하면 `.github/workflows/publish.yml`이 npm에 게시합니다. 태그 push나 main 병합만으로는 게시하지 않습니다.
 
+## 다음 패치: 카드 디렉터리 탐색 (SC-635)
+
+- `steercards explore --workspace ID '<command>' [--cursor TOKEN] [--max-chars N]`가 원격 `explore_cards`를 호출합니다. 전체 MCP JSON과 완료 여부·커서·중단 이유·모의 종료 코드·출처를 보존합니다. 서버의 탐색 도구 배포가 선행되어야 합니다.
+- compact 모드는 네 도구를 유지하며 탐색 도구 발견을 안내합니다. 새 `exploration` 가이드를 compact/full resource·설치 Skill·ZIP에 함께 제공합니다. `ls` → 범위를 좁힌 `rg` → `cat`/줄 범위 읽기, 커서 이어보기, 정확한 카드 키 조회·구조화 검색의 역할을 설명합니다.
+- 명령은 읽기 전용 가상 파일 탐색이며 로컬 셸·벡터 검색을 실행하지 않습니다. 기존 설치는 새 버전 `setup` 재실행과 MCP 재연결, Desktop Skill ZIP 재업로드로 가이드를 갱신합니다.
+
 ## 0.1.6 확인 요청 제목 안내 (SC-591)
 
 - 확인 요청 생성 전에 collaboration 가이드를 읽고, 요청·단계 제목은 행동이나 질문이 분명한 짧은 문장으로 작성하도록 안내합니다. 기대 결과와 상세 배경은 각각 `expected`와 연결 카드 본문으로 나눕니다.

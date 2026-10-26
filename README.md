@@ -188,6 +188,32 @@ steercards call <tool-name> --stdin --cwd /absolute/path/project < arguments.jso
 
 `serve`는 MCP STDIO 연결용입니다. 터미널에서 직접 실행하면 클라이언트 입력을 기다리는 것이 정상입니다.
 
+## 카드 본문을 디렉터리처럼 탐색
+
+`explore`는 선택한 워크스페이스의 카드 본문·댓글을 가상 파일로 읽고 검색합니다. 실제 셸을 실행하거나 벡터 검색을 사용하지 않습니다. 원격 `explore_cards`를 먼저 조회하므로 서버가 해당 도구를 제공해야 합니다.
+
+```sh
+steercards describe explore_cards
+steercards explore --workspace 123 'help'
+steercards explore --workspace 123 'ls /projects'
+steercards explore --workspace 123 'rg -n -i "session expired" /projects/7/boards/19/cards'
+steercards explore --workspace 123 'cat /projects/7/boards/19/cards/SC-42/card.md'
+steercards explore --workspace 123 "sed -n '20,60p' /projects/7/boards/19/cards/SC-42/comments.md"
+```
+
+예시 ID·키는 실제 목록에서 확인한 값으로 바꿉니다. `ls`로 범위를 좁히고 `rg`로 찾은 뒤 필요한 파일·줄만 읽습니다. 경로는 `/projects/<projectId>/boards/<boardId>/cards/<현재 카드 키>/card.md`와 `comments.md`입니다. 알려진 카드 키는 `get_card` 등으로 바로 조회하고, 상태·참여자·속성 같은 구조화 필터는 `search_cards`를 사용합니다.
+
+명령 전체를 **하나의 따옴표 인자**로 전달하세요. `ls`, `find`, `rg`, `grep`, `cat`, `sed -n`, `head`, `tail`의 제한된 문법만 지원하며 정확한 옵션은 `help`를 따릅니다. 파이프·리다이렉션·확장·명령 연결·파일 쓰기는 지원하지 않습니다.
+
+일반 `call`과 같은 전체 MCP JSON을 출력하여 제품 응답의 `workspaceId`, `output`, `complete`, `nextCursor`, `stopReason`, `exitCode`, `sources`를 보존합니다. `structuredContent.data.complete:false`이면 같은 워크스페이스·명령으로 `--cursor`에 반환된 `nextCursor`를 그대로 넣어 이어갑니다. `--max-chars`는 페이지당 1–16000자이며 두 호출에서 같은 값을 유지하세요.
+
+```sh
+steercards explore --workspace 123 --max-chars 2000 'rg -n "session expired" /projects/7/boards/19/cards'
+steercards explore --workspace 123 --max-chars 2000 --cursor '<nextCursor>' 'rg -n "session expired" /projects/7/boards/19/cards'
+```
+
+출력이 비어 있어도 `complete:false`이면 검색은 끝나지 않았습니다. 충분한 근거를 찾으면 이어보기를 멈출 수 있으며 그때는 부분 결과임을 알립니다. 완료된 검색의 `exitCode:1`은 일치 없음이고, 제품 오류와 다르므로 CLI 프로세스는 0으로 종료합니다. 무효·만료·변경 충돌 커서는 버리고 처음부터 다시 읽습니다. 상세 흐름은 [번들 탐색 가이드](skills/steercards/references/exploration.md)에 있습니다. compact MCP의 네 도구, full MCP resource, 설치 Skill과 ZIP에서도 같은 안내를 제공합니다.
+
 ## 고급: 설정 조각과 Skill 개별 설치
 
 기본 설치·업데이트에는 `setup`을 사용하세요. 직접 설정을 관리하려면 기존 개별 명령도 사용할 수 있습니다.

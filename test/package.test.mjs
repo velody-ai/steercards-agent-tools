@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
+import { unzipSync, strFromU8 } from 'fflate';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 
@@ -117,6 +118,87 @@ test('packed npm launchers preserve project env-file semantics', { timeout: 2400
     assert.equal(json(await run(bin, args, { cwd: consumer })).url, 'https://selected.example/api/mcp');
   });
 
+  await t.test('packed exploration CLI and compact/full MCP preserve bounded pages and source metadata', async () => {
+    const command = 'rg -n expired /projects/7/boards/19/cards';
+    const sources = [{ cardId: 42, path: '/projects/7/boards/19/cards/SC-42/card.md', cardKey: 'SC-42' }];
+    const first = { ok: true, data: { workspaceId: 123, output: '', complete: false, nextCursor: 'opaque-cursor.2', stopReason: 'scan_limit', exitCode: null, sources: [] } };
+    const second = { ok: true, data: { workspaceId: 123, output: `${sources[0].path}:12:session expired\n`, complete: true, nextCursor: null, stopReason: null, exitCode: 0, sources } };
+    const noMatch = { ok: true, data: { workspaceId: 123, output: '', complete: true, nextCursor: null, stopReason: null, exitCode: 1, sources: [] } };
+    const failure = { ok: false, error: { code: 'UNSUPPORTED_COMMAND', message: 'Unsupported command.', status: 400 } };
+    const calls = [];
+    const envelope = product => ({ content: [{ type: 'text', text: JSON.stringify(product) }], structuredContent: product, isError: false, _meta: { fixture: 'preserved' } });
+    const server = createServer(async (req, res) => {
+      if (req.method !== 'POST') { res.writeHead(405); res.end(); return; }
+      assert.equal(req.headers.authorization, `Bearer ${key}`);
+      let body = '';
+      for await (const chunk of req) body += chunk;
+      const rpc = JSON.parse(body);
+      if (rpc.id === undefined) { res.writeHead(202); res.end(); return; }
+      let result;
+      if (rpc.method === 'initialize') result = { protocolVersion: '2025-11-25', capabilities: { tools: {} }, serverInfo: { name: 'exploration-fixture', version: '1' } };
+      else if (rpc.method === 'tools/list') result = { tools: [{ name: 'explore_cards', description: 'Read-only directory card content explorer.', inputSchema: { type: 'object', properties: { workspaceId: { type: 'integer' }, command: { type: 'string' }, cursor: { type: 'string' }, maxChars: { type: 'integer' } }, required: ['workspaceId', 'command'] } }] };
+      else {
+        assert.equal(rpc.method, 'tools/call');
+        assert.equal(rpc.params.name, 'explore_cards');
+        calls.push(rpc.params.arguments);
+        result = envelope(rpc.params.arguments.command === 'unsupported' ? failure
+          : rpc.params.arguments.command === 'rg absent /projects' ? noMatch
+          : rpc.params.arguments.cursor ? second : first);
+      }
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ jsonrpc: '2.0', id: rpc.id, result }));
+    });
+    server.listen(0, '127.0.0.1'); await once(server, 'listening');
+    const url = `http://127.0.0.1:${server.address().port}/api/mcp`;
+    const options = ['--cwd', project, '--url', url];
+    try {
+      assert.deepEqual(json(await run(bin, ['explore', '--workspace', '123', command, '--max-chars', '2000', ...options], { cwd: consumer })), envelope(first));
+      assert.deepEqual(calls.at(-1), { workspaceId: 123, command, maxChars: 2000 });
+      assert.deepEqual(json(await run(bin, ['explore', '--workspace=123', command, '--cursor', first.data.nextCursor, '--max-chars=2000', ...options], { cwd: consumer })), envelope(second));
+      assert.deepEqual(calls.at(-1), { workspaceId: 123, command, cursor: first.data.nextCursor, maxChars: 2000 });
+      assert.deepEqual(json(await run(bin, ['explore', '--workspace', '123', 'rg absent /projects', ...options], { cwd: consumer })), envelope(noMatch));
+      assert.deepEqual(calls.at(-1), { workspaceId: 123, command: 'rg absent /projects' });
+      const failed = await run(bin, ['explore', '--workspace', '123', 'unsupported', ...options], { cwd: consumer });
+      assert.equal(failed.status, 1);
+      assert.deepEqual(JSON.parse(failed.stdout), envelope(failure));
+      assert.equal(calls.length, 4, 'each CLI request calls upstream once');
+      for (const mode of ['compact', 'full']) {
+        const transport = new StdioClientTransport({ command: process.execPath, args: ['--', join(consumer, 'node_modules', '@steercards', 'agent-tools', 'dist', 'cli.js'), 'serve', '--mode', mode, ...options], cwd: consumer, env, stderr: 'pipe' });
+        const client = new Client({ name: 'exploration-package', version: '1' });
+        try {
+          await client.connect(transport);
+          assert.match(client.getInstructions(), /explore_cards/);
+          const tools = (await client.listTools()).tools;
+          assert.equal(tools.length, mode === 'compact' ? 4 : 1);
+          if (mode === 'compact') assert.match(tools.find(tool => tool.name === 'steercards_search_tools').description, /explore_cards/);
+          const args = { workspaceId: 123, command, cursor: first.data.nextCursor, maxChars: 2000 };
+          const result = await client.callTool(mode === 'compact'
+            ? { name: 'steercards_call_tool', arguments: { name: 'explore_cards', arguments: args } }
+            : { name: 'explore_cards', arguments: args });
+          assert.deepEqual(result, envelope(second));
+          assert.deepEqual(calls.at(-1), args);
+          const resources = await client.listResources();
+          assert.ok(resources.resources.some(resource => resource.uri === 'steercards://guide/exploration'));
+          const resource = await client.readResource({ uri: 'steercards://guide/exploration' });
+          assert.match(resource.contents[0].text, /nextCursor/);
+          if (mode === 'compact') {
+            const guide = await client.callTool({ name: 'steercards_get_guide', arguments: { topic: 'exploration' } });
+            assert.match(guide.structuredContent.guide, /comments\.md/);
+          }
+        } finally { await client.close(); }
+      }
+      assert.equal(calls.length, 6);
+      const zip = join(temp, 'exploration-skill.zip');
+      json(await run(bin, ['skill', 'export', '--output', zip], { cwd: consumer }));
+      const files = unzipSync(await readFile(zip));
+      assert.match(strFromU8(files['steercards/references/exploration.md']), /nextCursor/);
+      assert.match(strFromU8(files['steercards/SKILL.md']), /references\/exploration\.md/);
+    } finally {
+      server.closeAllConnections();
+      await new Promise(resolve => server.close(resolve));
+    }
+  });
+
   await t.test('generated local and pinned npx MCP commands connect from another directory', async () => {
     await mkdir(join(project, '.cursor'));
     await writeFile(join(project, '.cursor', 'mcp.json'), '{"theme":"preserved","mcpServers":{"other":{"command":"other"}}}');
@@ -127,6 +209,7 @@ test('packed npm launchers preserve project env-file semantics', { timeout: 2400
       assert.equal(config.theme, 'preserved');
       assert.equal(config.mcpServers.other.command, 'other');
       const server = config.mcpServers.steercards;
+      assert.match(await readFile(join(project, '.cursor', 'skills', 'steercards', 'references', 'exploration.md'), 'utf8'), /nextCursor/);
       const transport = new StdioClientTransport({ ...server, cwd: consumer, env: { ...env, npm_config_offline: 'true' }, stderr: 'pipe' });
       const client = new Client({ name: 'package-regression', version: '1' });
       let stderr = '';
