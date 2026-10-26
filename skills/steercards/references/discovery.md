@@ -6,7 +6,7 @@ Search by the intended outcome, then describe only the promising tools. Calls pa
 
 - A known card: describe `get_card` or `get_card_by_number`. Many card tools accept `cardId` alone, or `card` as a key/number and optional `workspaceId`; parent IDs are derived. `card: 42` means a workspace card number, **not** numeric `cardId`.
 - An unknown location: `list_workspaces`, then `list_projects(workspaceId)`, then `list_boards(projectId)`. There is no global switch-workspace operation. Names are not guaranteed unique.
-- Search within a known workspace with `search_cards`; use its filters and small limit. `get_board` is useful when layout, grouping and property IDs matter, but does not include full card bodies.
+- Search structured fields within a known workspace with `search_cards`; use its filters and small limit. For directory-style card/comment text exploration use `explore_cards` and the [exploration guide](exploration.md): `ls` to scope, `rg` to find text, then `cat` or line ranges. Preserve bounded continuation metadata and continue until `complete:true` before claiming an exhaustive result. `get_board` is useful when layout, grouping and property IDs matter, but does not include full card bodies.
 - Return canonical card keys and URLs from the server. Old project prefixes may resolve as aliases; use the returned current key going forward.
 - Use `get_workspace_plan` for the workspace's current product limits rather than assuming a tier grants every feature.
 

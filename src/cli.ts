@@ -18,6 +18,7 @@ steercards serve [--mode compact|full]
 steercards tools [query] [--limit 10]
 steercards describe NAME
 steercards call NAME [--json JSON | --file PATH | --stdin]
+steercards explore --workspace ID COMMAND [--cursor TOKEN] [--max-chars N]
 steercards doctor [--connect]
 steercards config CLIENT [--local] [--mode compact|full]
 steercards skill install --client CLIENT [--global]
@@ -42,6 +43,9 @@ config only prints a snippet and never edits host settings.
 --local uses this installation's absolute Node/CLI paths (works before npm release).
 Claude Desktop: upload the skill ZIP, use compact get_guide, or full guide resources.
 Full tool responses are JSON; tool/product errors exit nonzero. Writes are never retried.
+explore forwards one quoted read-only virtual command to explore_cards, not a shell.
+It preserves complete, nextCursor, stopReason, exitCode and sources in the JSON result.
+Continue with the same workspace/command and --cursor until complete is true.
 `;
 
 function output(value: unknown) { process.stdout.write(JSON.stringify(value, null, 2) + '\n'); }
@@ -86,6 +90,7 @@ async function main() {
     json: { type: 'string' }, file: { type: 'string' }, stdin: { type: 'boolean' },
     client: { type: 'string' }, global: { type: 'boolean' }, output: { type: 'string' },
     limit: { type: 'string' }, connect: { type: 'boolean' }, local: { type: 'boolean' },
+    workspace: { type: 'string' }, cursor: { type: 'string' }, 'max-chars': { type: 'string' },
     'dry-run': { type: 'boolean' }, npx: { type: 'boolean' },
     'setup-code-stdin': { type: 'boolean' }, 'replace-agent-key': { type: 'boolean' },
     'keep-agent-key': { type: 'boolean' }, 'confirm-existing-key': { type: 'boolean' },
@@ -96,6 +101,9 @@ async function main() {
   const [command, name, ...extra] = positionals;
   const options = { cwd: values.cwd, envFile: values['env-file'], url: values.url };
   if (extra.length) throw new Error('Unexpected extra arguments. Use --help.');
+  if (command !== 'explore' && [values.workspace, values.cursor, values['max-chars']].some(value => value !== undefined)) {
+    throw new Error('--workspace, --cursor and --max-chars are only supported by explore.');
+  }
   if (command === 'setup') {
     if (name) throw new Error('Use setup --client CLIENT.');
     for (const option of ['json', 'file', 'stdin', 'limit', 'output', 'connect'] as const) {
@@ -149,13 +157,30 @@ async function main() {
     }
     throw new Error('Use skill install or skill export.');
   }
-  if (!['serve', 'tools', 'describe', 'call', 'doctor'].includes(command)) throw new Error('Unknown command. Use --help.');
+  if (!['serve', 'tools', 'describe', 'call', 'explore', 'doctor'].includes(command)) throw new Error('Unknown command. Use --help.');
   if (['serve', 'doctor'].includes(command) && name) throw new Error('Unexpected positional argument.');
   if (['describe', 'call'].includes(command) && !name) throw new Error(`${command} requires a tool name.`);
   if (values.mode && !['compact', 'full'].includes(values.mode)) throw new Error('Mode must be compact or full.');
   const limit = values.limit === undefined ? 10 : Number(values.limit);
   if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new Error('--limit must be an integer from 1 to 100.');
   let args: Record<string, unknown> = {};
+  if (command === 'explore') {
+    if (!name?.trim()) throw new Error('explore requires one quoted command, for example: explore --workspace 123 "ls /".');
+    if (!values.workspace || !/^\d+$/.test(values.workspace) || !Number.isSafeInteger(Number(values.workspace)) || Number(values.workspace) < 1) {
+      throw new Error('--workspace must be a positive safe integer.');
+    }
+    if (values.cursor !== undefined && !values.cursor.trim()) throw new Error('--cursor must be nonempty.');
+    if (values['max-chars'] !== undefined && (!/^\d+$/.test(values['max-chars']) || Number(values['max-chars']) < 1 || Number(values['max-chars']) > 16000)) {
+      throw new Error('--max-chars must be an integer from 1 to 16000.');
+    }
+    for (const option of ['json', 'file', 'stdin', 'limit', 'output', 'connect', 'client', 'global', 'local', 'mode'] as const) {
+      if (values[option] !== undefined) throw new Error(`--${option} is not supported by explore.`);
+    }
+    args = { workspaceId: Number(values.workspace), command: name,
+      ...(values.cursor !== undefined ? { cursor: values.cursor } : {}),
+      ...(values['max-chars'] !== undefined ? { maxChars: Number(values['max-chars']) } : {}),
+    };
+  }
   if (command === 'call') {
     if ([values.json !== undefined, values.file !== undefined, values.stdin === true].filter(Boolean).length > 1) throw new Error('Choose only one of --json, --file, or --stdin.');
     const source = values.json ?? (values.file !== undefined ? await readFile(resolve(values.cwd ?? process.cwd(), values.file), 'utf8') : values.stdin ? await stdinText() : '{}');
@@ -189,7 +214,7 @@ async function main() {
       if (isFailure(result)) process.exitCode = 1;
       return;
     }
-    const result = await runtime.callTool(name, args);
+    const result = await runtime.callTool(command === 'explore' ? 'explore_cards' : name, args);
     output(result);
     if (isFailure(result)) process.exitCode = 1;
   } finally { await runtime.close(); }
