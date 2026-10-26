@@ -2,6 +2,12 @@
 
 공개 패키지는 [`@steercards/agent-tools`](https://www.npmjs.com/package/@steercards/agent-tools), 소스는 [`velody-ai/steercards-agent-tools`](https://github.com/velody-ai/steercards-agent-tools)에서 관리합니다. 일반 CI는 검증을 수행하고, 안정 버전의 GitHub Release를 게시하면 `.github/workflows/publish.yml`이 npm에 게시합니다. 태그 push나 main 병합만으로는 게시하지 않습니다.
 
+## 0.2.4 관련 카드의 파일 우선 탐색 안내
+
+- 관련 카드는 `explore_cards`로 디렉터리부터 탐색합니다. `ls`의 디렉터리·카드 제목 메타데이터와 `find`의 파일 경로·키를 구분하고, `rg -g card.md`로 제목·본문을 찾은 뒤 `cat`/줄 범위로 읽으며 다음 범위를 점진적으로 좁힙니다.
+- 댓글은 본문만으로 맥락이 부족하거나 이력·논의를 요청할 때 보조로 읽습니다. 현재 카드 키·근거 줄·검색 범위와 미완료 커서를 함께 보고하며, 정확한 키 조회와 필터 전용 요청은 해당 도구로 바로 처리합니다.
+- MCP 초기 instructions·compact 검색 도구 설명·README·설치 Skill과 탐색 가이드에 같은 흐름을 적용합니다. 기존 작업 배지와 관리 설치 자동 갱신 안내를 보존합니다.
+
 ## 0.2.3 수동 병합한 관리 스킬의 갱신 복구 (SC-644)
 
 - 이전 설치 해시와 달라도 현재 관리 파일이 새 배포본의 같은 파일과 byte 단위로 같으면 이미 병합된 파일로 인정합니다. 나머지 갱신과 설치 기록 저장은 기존 해시·잠금·baseline·롤백 절차를 사용합니다.
