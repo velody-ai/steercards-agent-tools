@@ -4,7 +4,7 @@ Describe tools before constructing writes: card references and property values s
 
 ## Content and layout
 
-- For unfamiliar card/comment text, use `explore_cards` with a selected workspace and the [exploration guide](exploration.md). Its virtual files live under `/projects/<projectId>/boards/<boardId>/cards/<currentKey>/`; read `card.md` and `comments.md` after narrowing a listing or text search. A known card key still uses exact lookup, and structured property/status/participant filters use `search_cards`.
+- For unfamiliar card/comment text, use `explore_cards` with a selected workspace and the [exploration guide](exploration.md). Its virtual files live under `/projects/<projectId>/boards/<boardId>/cards/<currentKey>/`; read `card.md` and `comments.md` after narrowing a listing or text search. A known card key still uses exact lookup. Use `search_cards` for status/approval filters and archived-card inclusion, `list_participant_cards` for active board cards by exact participant kind/ID, and `get_board` plus current tool schemas for other property structure.
 - `get_board` returns groups, properties/options, values, card previews and operational metadata. Use `get_card` for the latest full Markdown `description`, relations and linked PRs.
 - `create_card` can set initial `propertyValues` atomically. Keys may be exact property names or IDs; select/status values accept exact option names or IDs where the current schema allows them.
 - `update_card` replaces each supplied title/description in full. Read the latest description and preserve other content when editing a task marker (`- [ ]` / `- [x]`). `body` is not the card-body field. Checklist progress is derived from Markdown; there are no separate checklist-item tools.
