@@ -11,7 +11,7 @@ import { packageInfo } from './package.js';
 
 export interface ServerOptions { mode: 'compact' | 'full' }
 
-const guideTopics = ['overview', 'discovery', 'cards', 'profiles', 'claims-runs', 'context', 'files', 'collaboration'] as const;
+const guideTopics = ['overview', 'discovery', 'exploration', 'cards', 'profiles', 'claims-runs', 'context', 'files', 'collaboration'] as const;
 const guideUri = 'steercards://guide/';
 // Keep the work contract visible even in hosts that show tool descriptions but
 // omit initialize instructions or have an older installed Skill.
@@ -24,7 +24,7 @@ const cardWorkInstructions = [
   'Status refresh does not renew a claim lease or send a run heartbeat.',
   'Do not create a badge for read-only lookups or assignment alone. Describe these tools for their current inputs.',
 ].join(' ');
-const instructions = 'Steercards tools use progressive discovery. In compact mode search tool metadata, describe the selected tool to obtain its current schema, then call it with matching arguments. Read the Steercards guide for workflows. Tool schemas are fetched from the authenticated upstream server. Respect isError and structuredContent. Never automatically retry a mutation after a network failure; read current state first. The upstream rate limit is 120 requests per minute; follow Retry-After. ' + cardWorkInstructions;
+const instructions = 'Steercards tools use progressive discovery. In compact mode search tool metadata, describe the selected tool to obtain its current schema, then call it with matching arguments. For directory-style card content exploration, discover explore_cards and read the exploration guide: scope a workspace, ls then rg then cat or line ranges, and continue nextCursor until complete. Use exact card lookup for known keys and search_cards for structured filters. Read the Steercards guide for workflows. Tool schemas are fetched from the authenticated upstream server. Respect isError and structuredContent. Never automatically retry a mutation after a network failure; read current state first. The upstream rate limit is 120 requests per minute; follow Retry-After. ' + cardWorkInstructions;
 
 export async function getGuide(topic = 'overview'): Promise<string> {
   if (!guideTopics.includes(topic as typeof guideTopics[number])) {
@@ -37,7 +37,7 @@ export async function getGuide(topic = 'overview'): Promise<string> {
 const compactTools: Tool[] = [
   {
     name: 'steercards_search_tools', title: 'Search Steercards tools',
-    description: 'Search the live upstream catalog by tool name and description. Returns compact metadata without schemas; describe a match before calling it. An empty query browses the catalog.',
+    description: 'Search the live upstream catalog by tool name and description. For directory-style card content search, find explore_cards and read the exploration guide. Returns compact metadata without schemas; describe a match before calling it. An empty query browses the catalog.',
     inputSchema: { type: 'object', properties: { query: { type: 'string' }, limit: { type: 'integer', minimum: 1, maximum: 100, default: 10 } }, required: ['query'], additionalProperties: false },
     annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: true },
   },

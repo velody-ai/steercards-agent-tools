@@ -51,9 +51,12 @@ Replace example references with the user's data. For long bodies use `steercards
 
 Do not enumerate every tool or load every guide for a small task. If a capability is unfamiliar, use compact mode’s `steercards_get_guide({topic: "TOPIC"})` or read the matching file below. In full mode, read the MCP resource `steercards://guide/overview` or `steercards://guide/TOPIC`; the wrapper guide tool is not exposed. The live tool schema is authoritative when a guide and the server differ.
 
+For directory-style card content exploration, discover `explore_cards` and read [exploration](references/exploration.md). Select a workspace, `ls` to narrow its virtual directories, `rg` for relevant text, then `cat` or read line ranges. CLI: `steercards explore --workspace 123 'ls /projects'`. This read-only command simulation has no shell execution or vector search. Preserve `complete`, `nextCursor`, `stopReason`, `exitCode` and `sources`; continue an incomplete result with the same scope/command and exact cursor. Use direct card lookup for a known key and `search_cards` for structured filters.
+
 | Topic | Read when |
 | --- | --- |
 | [discovery](references/discovery.md) | Choosing workspaces, understanding scope, errors, retries or pagination |
+| [exploration](references/exploration.md) | Read-only directory navigation, card/comment text search, line ranges and bounded cursor continuation |
 | [cards](references/cards.md) | Cards, boards, properties, participant fields, relations, history or spec utilities |
 | [profiles](references/profiles.md) | Registered identity, assignment, profile inbox, mentions or avatar management |
 | [claims-runs](references/claims-runs.md) | Accepting work, leases, handoffs, progress, cancellation or usage reporting |

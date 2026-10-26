@@ -2,7 +2,7 @@
 
 공개 패키지는 [`@steercards/agent-tools`](https://www.npmjs.com/package/@steercards/agent-tools), 소스는 [`velody-ai/steercards-agent-tools`](https://github.com/velody-ai/steercards-agent-tools)에서 관리합니다. 일반 CI는 검증을 수행하고, 안정 버전의 GitHub Release를 게시하면 `.github/workflows/publish.yml`이 npm에 게시합니다. 태그 push나 main 병합만으로는 게시하지 않습니다.
 
-## 0.1.7 카드 작업 배지와 관리 설치 자동 갱신 (SC-634, SC-636)
+## 0.2.1 카드 작업 배지와 관리 설치 자동 갱신 (SC-634, SC-636)
 
 - 실제 카드 작업 시작 전 `working`, 5분 갱신(10분 stale 이전), 사람 답 대기 시 `waiting_for_input`과 질문, 차단 오류 시 `error`, 재개 시 `working`, 완료·중단·인계 전 clear를 기본 계약으로 안내합니다. 답·해결을 기다리는 동안은 턴 종료만으로 지우지 않습니다. 조회·단순 배정은 배지를 만들지 않습니다.
 - claim-managed 카드의 상태 쓰기에는 현재 `claimFence`를 사용하고, 반납·이전 전 유효한 fence로 정리합니다. 소유권을 잃은 뒤 다른 담당자의 배지를 지우지 않습니다. 상태 배지·claim lease·run heartbeat는 각각 유지합니다.
@@ -10,6 +10,12 @@
 - npm MCP 명령은 `@latest serve --client <canonical>`으로 다음 프로세스 시작 때 최신 태그를 npm 캐시 정책에 따라 조회합니다. 실행 중 프로세스의 즉시 교체는 수행하지 않습니다. 기존 pinned 설치는 최신 `setup`을 한 번 실행해 전환합니다.
 - 새 안정 runtime은 기존 유효 관리 기록·npm 명령·실행 인자가 일치할 때만 관리된 설정/Skill을 갱신하며, 해시·잠금·baseline·롤백 검사를 재사용합니다. 사용자 편집·삭제·readonly·경합은 보존하고 고정 stderr 안내 후 MCP를 계속합니다. 더 새 설치로의 downgrade, raw serve의 새 설치/adoption, `--local` 자동 전환, 자격증명/연결 검사 변경은 수행하지 않습니다.
 - 개별/전역 Skill 설치는 수동이고 Desktop ZIP은 갱신 후 수동 업로드합니다. 이미 읽은 Skill은 새 세션/reload가 필요합니다. npx 다운로드 실패는 runtime 이전 단계로서 로컬 갱신 실패 후 연결 유지 범위 밖입니다. 앱 서버 배포·npm 게시·기존 설치 전환은 별도 단계입니다.
+
+## 0.2.0 카드 디렉터리 탐색 (SC-635)
+
+- `steercards explore --workspace ID '<command>' [--cursor TOKEN] [--max-chars N]`가 원격 `explore_cards`를 호출합니다. 전체 MCP JSON과 완료 여부·커서·중단 이유·모의 종료 코드·출처를 보존합니다. 서버의 탐색 도구 배포가 선행되어야 합니다.
+- compact 모드는 네 도구를 유지하며 탐색 도구 발견을 안내합니다. 새 `exploration` 가이드를 compact/full resource·설치 Skill·ZIP에 함께 제공합니다. `ls` → 범위를 좁힌 `rg` → `cat`/줄 범위 읽기, 커서 이어보기, 정확한 카드 키 조회·구조화 검색의 역할을 설명합니다.
+- 명령은 읽기 전용 가상 파일 탐색이며 활성·보관 카드를 함께 포함하고 로컬 셸·벡터 검색을 실행하지 않습니다. 기존 설치는 새 버전 `setup` 재실행과 MCP 재연결, Desktop Skill ZIP 재업로드로 가이드를 갱신합니다.
 
 ## 0.1.6 확인 요청 제목 안내 (SC-591)
 
