@@ -269,6 +269,142 @@ test('packed npm launchers preserve project env-file semantics', { timeout: 2400
     }
   });
 
+  await t.test('packed bulk archive preserves per-card fences, partial failures and uncertain outcomes', async () => {
+    const profile = '11111111-1111-4111-8111-111111111111';
+    const fence = { claimId: '22222222-2222-4222-8222-222222222222', generation: 2, runId: '33333333-3333-4333-8333-333333333333' };
+    const otherFence = { claimId: '44444444-4444-4444-8444-444444444444', generation: 7, runId: '55555555-5555-4555-8555-555555555555' };
+    const args = { workspaceId: 123, projectId: 7, boardId: 19, agentProfileId: profile, actorName: 'bulk-fixture', cards: [
+      { cardId: 42, claimFence: fence }, { card: 'WEB-43' }, { cardId: 44, claimFence: otherFence }, { card: 42, claimFence: fence },
+    ] };
+    const partial = { ok: true, data: { results: [
+      { cardId: 42, status: 'archived', archivedAt: 1793059000000 },
+      { cardId: 43, card: 'WEB-43', status: 'unchanged', archivedAt: 1793058000000 },
+      { cardId: 44, status: 'failed', error: { code: 'CARD_CLAIM_LOST', message: 'The card claim changed.', status: 409, details: { cardId: 44 } } },
+    ], summary: { requested: 3, archived: 1, unchanged: 1, failed: 1 } } };
+    const rejected = { ok: false, error: { code: 'INVALID_ARGUMENTS', message: 'The bulk request is invalid.', status: 400 } };
+    const envelope = product => ({ content: [{ type: 'text', text: JSON.stringify(product) }], structuredContent: product, isError: !product.ok, _meta: { upstream: 'bulk-archive' } });
+    const tool = { name: 'archive_cards', description: 'Archive 1–100 explicit cards on one board; results may partially fail.', inputSchema: { type: 'object', properties: {
+      projectId: { type: 'integer' }, boardId: { type: 'integer' }, workspaceId: { type: 'integer' }, agentProfileId: { type: 'string', format: 'uuid' }, actorName: { type: 'string' },
+      cards: { type: 'array', minItems: 1, maxItems: 100, items: { type: 'object', properties: { cardId: { type: 'integer' }, card: { anyOf: [{ type: 'string' }, { type: 'integer' }] }, claimFence: { type: 'object', properties: { claimId: { type: 'string' }, generation: { type: 'integer' }, runId: { type: 'string' } }, required: ['claimId', 'generation', 'runId'] } }, oneOf: [{ required: ['cardId'] }, { required: ['card'] }], additionalProperties: false } },
+    }, required: ['boardId', 'cards'], additionalProperties: false }, outputSchema: { type: 'object', properties: { ok: { type: 'boolean' } }, required: ['ok'], additionalProperties: true }, annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false } };
+    const calls = [];
+    let responseMode = 'partial';
+    const upstream = createServer(async (req, res) => {
+      if (req.method !== 'POST') { res.writeHead(405); res.end(); return; }
+      assert.equal(req.headers.authorization, `Bearer ${key}`);
+      let body = '';
+      for await (const chunk of req) body += chunk;
+      const rpc = JSON.parse(body);
+      if (rpc.id === undefined) { res.writeHead(202); res.end(); return; }
+      let result;
+      if (rpc.method === 'initialize') result = { protocolVersion: '2025-11-25', capabilities: { tools: {} }, serverInfo: { name: 'bulk-fixture', version: '1' } };
+      else if (rpc.method === 'tools/list') result = { tools: [tool] };
+      else {
+        assert.equal(rpc.method, 'tools/call');
+        assert.equal(rpc.params.name, 'archive_cards');
+        calls.push(rpc.params.arguments);
+        // A write may have committed before either transport failure. Count the
+        // request before dropping its response; the wrapper must never replay it.
+        if (responseMode === 'lost') { req.socket.destroy(); return; }
+        if (responseMode === 'http-error') { res.writeHead(503, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: { code: 'AGENT_AUDIT_UNAVAILABLE' } })); return; }
+        result = envelope(responseMode === 'rejected' ? rejected : partial);
+      }
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ jsonrpc: '2.0', id: rpc.id, result }));
+    });
+    upstream.listen(0, '127.0.0.1'); await once(upstream, 'listening');
+    const url = `http://127.0.0.1:${upstream.address().port}/api/mcp`;
+    const options = ['--cwd', project, '--url', url];
+    const installedRoot = join(consumer, 'node_modules', '@steercards', 'agent-tools');
+    try {
+      assert.equal(json(await run(bin, ['tools', 'archive_cards', ...options], { cwd: consumer }))[0].name, tool.name);
+      assert.deepEqual(json(await run(bin, ['describe', 'archive_cards', ...options], { cwd: consumer })), tool);
+      const file = join(temp, 'bulk arguments.json');
+      await writeFile(file, JSON.stringify(args));
+      for (const [inputOptions, input] of [[['--json', JSON.stringify(args)]], [['--file', file]], [['--stdin'], JSON.stringify(args)]]) {
+        const before = calls.length;
+        // CMD quoting is not the JSON-input contract under test. Exercise the
+        // installed JS entry for --json on Windows, and real shims for file/stdin.
+        const direct = process.platform === 'win32' && inputOptions[0] === '--json';
+        const prefix = direct ? ['--', join(installedRoot, 'dist', 'cli.js')] : [];
+        assert.deepEqual(json(await run(direct ? process.execPath : bin, [...prefix, 'call', 'archive_cards', ...inputOptions, ...options], { cwd: consumer, input })), envelope(partial));
+        assert.deepEqual(calls.at(-1), args, 'CLI must preserve item order, duplicates, identity and each fence');
+        assert.equal(calls.length, before + 1);
+      }
+      responseMode = 'rejected';
+      const invalid = { ...args, cards: Array.from({ length: 101 }, () => ({ cardId: 42 })) };
+      const denied = await run(bin, ['call', 'archive_cards', '--stdin', ...options], { cwd: consumer, input: JSON.stringify(invalid) });
+      assert.equal(denied.status, 1);
+      assert.deepEqual(JSON.parse(denied.stdout), envelope(rejected));
+      assert.deepEqual(calls.at(-1), invalid, 'server remains authoritative for validation');
+      for (responseMode of ['lost', 'http-error']) {
+        const before = calls.length;
+        const uncertain = await run(bin, ['call', 'archive_cards', '--stdin', ...options], { cwd: consumer, input: JSON.stringify(args) });
+        assert.equal(uncertain.status, 1);
+        assert.equal(uncertain.stdout, '');
+        assert.equal(JSON.parse(uncertain.stderr).ok, false);
+        assert.ok(!uncertain.stderr.includes(key));
+        assert.equal(calls.length, before + 1, 'an uncertain CLI mutation is sent once');
+      }
+
+      const { Runtime, loadConfig } = await import(pathToFileURL(join(installedRoot, 'dist', 'index.js')).href);
+      const runtime = new Runtime(await loadConfig({ cwd: project, url, env }));
+      try {
+        assert.deepEqual(await runtime.describeTool('archive_cards'), tool);
+        responseMode = 'partial';
+        assert.deepEqual(await runtime.callTool('archive_cards', args), envelope(partial));
+        assert.deepEqual(calls.at(-1), args);
+        responseMode = 'lost';
+        const before = calls.length;
+        await assert.rejects(runtime.callTool('archive_cards', args));
+        assert.equal(calls.length, before + 1, 'an uncertain JavaScript SDK mutation is sent once');
+      } finally { await runtime.close(); }
+
+      for (const mode of ['compact', 'full']) {
+        const transport = new StdioClientTransport({ command: process.execPath, args: ['--', join(installedRoot, 'dist', 'cli.js'), 'serve', '--mode', mode, ...options], cwd: consumer, env, stderr: 'pipe' });
+        const client = new Client({ name: 'bulk-archive-package', version: '1' });
+        const request = mode === 'compact' ? { name: 'steercards_call_tool', arguments: { name: tool.name, arguments: args } } : { name: tool.name, arguments: args };
+        try {
+          await client.connect(transport);
+          const tools = (await client.listTools()).tools;
+          assert.equal(tools.length, mode === 'compact' ? 4 : 1);
+          if (mode === 'full') assert.deepEqual(tools[0], tool);
+          else {
+            const found = await client.callTool({ name: 'steercards_search_tools', arguments: { query: 'archive_cards' } });
+            assert.equal(found.structuredContent.tools[0].name, tool.name);
+            const described = await client.callTool({ name: 'steercards_describe_tool', arguments: { name: tool.name } });
+            assert.deepEqual(described.structuredContent.tool, tool);
+          }
+          for (responseMode of ['partial', 'rejected']) {
+            const before = calls.length;
+            assert.deepEqual(await client.callTool(request), envelope(responseMode === 'partial' ? partial : rejected));
+            assert.deepEqual(calls.at(-1), args);
+            assert.equal(calls.length, before + 1);
+          }
+          responseMode = 'lost';
+          const before = calls.length;
+          await assert.rejects(client.callTool(request));
+          assert.equal(calls.length, before + 1, `an uncertain ${mode} mutation is sent once`);
+          const resource = await client.readResource({ uri: 'steercards://guide/cards' });
+          assert.equal(resource.contents[0].text, await readFile(join(root, 'skills/steercards/references/cards.md'), 'utf8'));
+          assert.match(resource.contents[0].text, /summary.*requested/);
+          if (mode === 'compact') {
+            const guide = await client.callTool({ name: 'steercards_get_guide', arguments: { topic: 'cards' } });
+            assert.equal(guide.structuredContent.guide, resource.contents[0].text);
+          }
+        } finally { await client.close(); }
+      }
+      const zip = join(temp, 'bulk-archive-skill.zip');
+      json(await run(bin, ['skill', 'export', '--output', zip], { cwd: consumer }));
+      const files = unzipSync(await readFile(zip));
+      assert.equal(strFromU8(files['steercards/references/cards.md']), await readFile(join(root, 'skills/steercards/references/cards.md'), 'utf8'));
+      assert.match(strFromU8(files['steercards/SKILL.md']), /archive_cards/);
+    } finally {
+      upstream.closeAllConnections();
+      await new Promise(resolve => upstream.close(resolve));
+    }
+  });
+
   await t.test('generated local and latest npx MCP commands connect and sync a previous managed skill', async () => {
     // The candidate is not published. Resolve @latest against its exact packed
     // bytes through a local registry, without fetching the public release.
