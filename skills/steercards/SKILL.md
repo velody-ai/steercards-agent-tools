@@ -86,6 +86,8 @@ Ideal list flow: **one search in the known board → extra reading only for ambi
 | [files](references/files.md) | Images, card artifacts, uploads, publication or revision conflicts |
 | [collaboration](references/collaboration.md) | Writing work updates and mentions; human checks, activity feeds, reservations or webhooks |
 
+For several cards, discover `archive_cards` and read [bulk archive](references/cards.md#archive-several-cards). Keep an explicit list on the selected board (up to 100 items), use each card's own claim fence, inspect per-item results even when `ok:true`, and verify current state before retrying an uncertain response.
+
 ## Preserve the server's contracts
 
 - Read current state before replacing content. Inspect `isError`, product `ok` and `error`, not just HTTP status. Protocol/authentication failures can have a different response shape.

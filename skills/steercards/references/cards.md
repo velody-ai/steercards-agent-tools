@@ -14,6 +14,24 @@ Describe tools before constructing writes: card references and property values s
 - Archive removes a card from active board results while retaining content. Use `list_archived_cards` and `restore_card` for recovery. Permanent deletion has different consequences.
 - `list_card_versions` and `get_card_version` inspect immutable title/body history. `restore_card_version` uses current `expectedContentRevision`; it does not restore deleted binary files or other card fields.
 
+## Archive several cards
+
+Discover and describe `archive_cards` for a bulk archive. Keep the user's selected board and explicit card list; do not turn a filter, page or a range of card numbers into permission to archive more cards. Freeze the intended list before calling and split more than 100 items into explicit batches without broadening the scope.
+
+The tool takes `boardId` and `cards` (1–100 items), with optional `projectId`, `workspaceId`, `agentProfileId` and `actorName`. Each item has exactly one reference: numeric `cardId`, or `card` as a canonical key/workspace card number. These numbers are different identities. All cards must belong to the selected board. For a claim-managed card, put its own current `claimFence:{claimId,generation,runId}` on that item, never on the whole batch or copied from another card. Resolve current ownership first; never drop a rejected fence or change profiles to bypass protection.
+
+```sh
+steercards tools archive_cards
+steercards describe archive_cards
+steercards call archive_cards --json '{"workspaceId":123,"boardId":19,"cards":[{"cardId":42},{"card":"WEB-43"}]}'
+```
+
+Replace these example identities with the user's actual selection. Compact MCP uses `steercards_call_tool` with `name:"archive_cards"` and the same arguments; full MCP exposes `archive_cards` directly. The JavaScript `Runtime.callTool` uses the same live tool and arguments without a dedicated helper.
+
+Read `isError` and product `ok`/`error`, then **every** `data.results` item and `data.summary`. Even HTTP 200, `ok:true`, and CLI exit 0 can mean partial success. Each result is `archived`, `unchanged` (already archived, after permission/fence checks), or `failed` with its own `error:{code,message,status,details?}`. `summary` has `requested`, `archived`, `unchanged`, and `failed`. References resolving to the same card are processed once in first-occurrence order, so `requested` counts unique results, not necessarily input items. The response does not contain a whole updated board. Report archived, already archived and failed separately; do not describe partial success as all cards archived.
+
+Malformed items, invalid fence shapes and a batch over 100 are rejected before writes. Other item failures can leave earlier or later items archived. After a known partial result, reconcile failed items and retry only explicitly intended, still-unarchived cards with valid current ownership. Never automatically replay the whole batch after a lost response, timeout or 5xx: read each intended card with `get_card` and inspect `archivedAt`, then decide a new call only for confirmed unfinished items. If a card's state cannot be read, keep it unresolved instead of assuming failure. Use `list_archived_cards` / `restore_card` for recovery; archive retains content and is distinct from permanent deletion.
+
 ## Properties and status
 
 Read the board before modifying properties/options or grouping. Status lives in a status property's value, not a legacy `statusId`. Grouping may be independent of the first status property.

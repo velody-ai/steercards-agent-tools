@@ -216,6 +216,40 @@ steercards call <tool-name> --stdin --cwd /absolute/path/project < arguments.jso
 
 `serve`는 MCP STDIO 연결용입니다. 터미널에서 직접 실행하면 클라이언트 입력을 기다리는 것이 정상입니다.
 
+## 여러 카드 한 번에 아카이브
+
+원격 서버의 `archive_cards`를 탐색한 뒤 같은 보드의 명시적인 카드 목록을 전달합니다. 도구 목록을 고정하지 않는 CLI·JavaScript SDK·compact/full MCP 모두 같은 계약을 사용합니다. 실제 입력은 연결한 서버의 최신 스키마를 확인하세요.
+
+```sh
+steercards tools archive_cards
+steercards describe archive_cards
+steercards call archive_cards --json '{"workspaceId":123,"boardId":19,"cards":[{"cardId":42},{"card":"WEB-43"}]}'
+```
+
+예시 ID는 사용자가 선택한 실제 데이터로 바꿉니다. `cards`는 1~100개이며 각 항목에는 `cardId` 또는 `card` 중 하나만 넣습니다. `cardId`는 리소스 ID이고 숫자 `card`는 워크스페이스 카드 번호입니다. `projectId`, `workspaceId`, `agentProfileId`, `actorName`은 현재 스키마에 따라 선택적으로 전달합니다. claim이 관리하는 카드에는 해당 항목의 `claimFence:{claimId,generation,runId}`를 넣습니다. 다른 카드의 fence를 공유하거나 거절된 fence를 빼서 다시 요청하지 않습니다. 대상 목록과 보드 범위를 먼저 확정하고, 필터·페이지·번호 범위를 임의로 전체 보드 작업으로 확대하지 않습니다.
+
+JavaScript에서는 기존 `Runtime`을 그대로 사용합니다. 아래 `argumentsObject`는 위와 같은 실제 선택 목록이며, claim·프로필이 필요하면 함께 전달합니다.
+
+```js
+import { loadConfig, Runtime } from '@steercards/agent-tools';
+
+const runtime = new Runtime(await loadConfig({ cwd: '/absolute/path/project' }));
+try {
+  await runtime.describeTool('archive_cards');
+  const result = await runtime.callTool('archive_cards', argumentsObject);
+  // result.isError와 structuredContent.ok, data.results 및 data.summary를 함께 확인합니다.
+  console.log(JSON.stringify(result));
+} finally {
+  await runtime.close();
+}
+```
+
+compact는 `steercards_call_tool({name:"archive_cards",arguments:argumentsObject})`, full은 `archive_cards(argumentsObject)`로 같은 목록을 전달합니다. 결과의 `data.results`는 항목별 `archived`, `unchanged`(권한·fence 확인 후 이미 아카이브됨), `failed`와 오류를 보존하며, `data.summary`에는 `requested`, `archived`, `unchanged`, `failed`가 있습니다. 같은 카드로 해석되는 중복 참조는 처음 한 번만 처리하므로 `requested`는 고유 결과 개수입니다. 전체 보드 응답은 반환하지 않습니다.
+
+**HTTP 200·`ok:true`·CLI 종료 코드 0도 부분 실패일 수 있습니다.** CLI 종료 코드는 공통 프로토콜·제품 오류를 나타내며, 모든 항목의 아카이브 성공을 보장하지 않습니다. 각 `status`와 `summary.failed`를 읽어 아카이브·기존 보관·실패 수를 구분해 알립니다. 잘못된 입력·fence 형식·100개 초과는 쓰기 전에 전체 거절되지만 항목별 실패는 다른 카드의 성공과 함께 반환될 수 있습니다.
+
+부분 결과가 있으면 실패 항목의 현재 상태와 점유를 확인한 뒤 여전히 필요한 항목만 다시 결정합니다. 응답 유실·timeout·5xx에는 전체 목록을 자동 재호출하지 않습니다. 각 대상의 `get_card`로 `archivedAt`을 확인해 미완료가 확인된 카드만 재요청하고, 조회할 수 없는 카드는 확인되지 않았다고 남깁니다. 복구에는 `list_archived_cards`와 `restore_card`를 사용합니다. [카드 가이드](skills/steercards/references/cards.md#archive-several-cards)에 같은 안내가 있으며 설치 Skill·Desktop ZIP·MCP 가이드에도 반영됩니다.
+
 ## 카드 본문을 디렉터리처럼 탐색
 
 단순 카드 찾기는 `search_cards`를 사용합니다. `query`는 **제목과 본문을 모두 검색**하며 현재 스키마가 지원하는 범위·상태·승인·보관 필터를 결합할 수 있습니다. 여러 표현·범위를 조사하거나 근거 구절·줄 번호가 필요하면 `explore_cards`를 사용합니다. `explore` CLI는 선택한 워크스페이스의 카드 본문·댓글을 가상 파일로 읽고 검색하며, 실제 셸이나 벡터 검색을 실행하지 않습니다. 원격 서버가 해당 도구를 제공해야 합니다.
