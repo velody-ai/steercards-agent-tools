@@ -8,6 +8,11 @@ Ask in the user's language, 1–3 questions at a time. Offer a few meaningful ch
 - “일을 어떻게 시작할까요?” Create a card from a conversational request; work on cards the user names; choose the next eligible card from the selected board. For board selection, define eligible statuses, priority/dependency handling and whether the user wants to confirm the next task. Do not promise background polling.
 - Choose the workspace/project/board only if actual discovery leaves ambiguity or the user needs a new one. Prefer current statuses and fields. A new board or field must be included in the final preview, not created during discovery.
 
+## Board fields
+
+- Derive `유형` (`select`) options from the work discussed above. Show a small proposed set in the user’s language and confirm it; categories such as features or bugs are examples, not mandatory options. Reuse existing options, and show only proposed additions or conflicts. If the existing workflow already settles this, keep it without asking again.
+- Include `담당자` (`participant`), `우선순위` (`priority`) and `PR` (`url`) alongside type in the setup preview. Assignee uses real user/profile identities, not text or a select list of agent names; agree on single versus multiple assignment where the workflow does not establish it. Reuse compatible existing names/settings and ask only about unresolved mismatches. Priority uses the built-in `urgent`, `high`, `medium`, `low` values; PR may remain empty until a PR exists, without granting PR creation authority.
+
 ## Structure and roles
 
 - “여러 에이전트를 사용할까요?” One agent; implementer plus reviewer; a small specialist team. Recommend based on work, not an assumption that more agents are better.
