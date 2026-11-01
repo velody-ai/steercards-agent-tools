@@ -4,7 +4,11 @@ Write this document in the user's language. Replace the notes below with confirm
 
 ## Project and board
 
-Selected project/repository, client, workspace and board. Include names, verified links/IDs where useful, and actual status/participant field mappings. Reference any existing project rules that continue to apply.
+Selected project/repository, client, workspace and board. Include names, verified links/IDs where useful, and the actual status field mapping. Reference any existing project rules that continue to apply.
+
+## Board fields
+
+Record all four purposes using the actual field names, IDs and types: assignee (`participant`), priority (`priority`), type (`select`) and PR (`url`). New fields default to `담당자`, `우선순위`, `유형` and `PR`; keep compatible existing names/mappings. Include assignee single/multiple selection and user/profile allowance, built-in priority values (`urgent`, `high`, `medium`, `low`), and the confirmed interview-derived type options with their actual IDs. Preserve existing options and card values. Identify which fields/options were reused or added and any unresolved type/settings conflict in setup status; keep all four purposes even when PR creation is not currently part of the workflow.
 
 ## Intake and planning
 

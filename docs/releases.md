@@ -2,6 +2,12 @@
 
 공개 패키지는 [`@steercards/agent-tools`](https://www.npmjs.com/package/@steercards/agent-tools), 소스는 [`velody-ai/steercards-agent-tools`](https://github.com/velody-ai/steercards-agent-tools)에서 관리합니다. 일반 CI는 검증을 수행하고, 안정 버전의 GitHub Release를 게시하면 `.github/workflows/publish.yml`이 npm에 게시합니다. 태그 push나 main 병합만으로는 게시하지 않습니다.
 
+## 0.3.2 워크플로우 기본 보드 필드 (SC-674)
+
+- `steercards-workflow` 완료 결과에 담당자(`participant`), 우선순위(`priority`), 유형(`select`), PR(`url`) 필드를 포함합니다. 유형 선택지는 인터뷰에서 실제 업무에 맞춰 정하며, 미리보기와 적용 후 검증에도 필드 구성을 기록합니다.
+- 호환되는 기존 필드는 다른 이름도 유지해 재사용하고 누락만 생성합니다. 기존 값·유형 선택지를 보존하며, 타입·참여자 설정 충돌은 구체적인 변경안으로 확인받고 미해결 항목은 대기 상태로 남깁니다.
+- 새 안정 버전의 공식 setup 또는 관리 갱신으로 두 스킬을 갱신합니다. 사용자 편집 보호를 유지하며 이미 읽은 스킬은 새 세션/reload, Desktop ZIP은 수동 재업로드가 필요합니다. 설치만으로 인터뷰나 보드 변경을 시작하지 않습니다.
+
 ## 0.3.0 대화형 워크플로우 온보딩 (SC-657)
 
 - `steercards-workflow` 스킬은 “스티어카드 워크플로우 만들자/수정하자” 요청에서 기존 환경을 조사하고 업무 방식·역할·완료 기준·자율 범위·모델 정책을 대화로 정합니다. 구체적인 초안을 확인받은 뒤 사용자 문서와 지침 참조, 지원되는 역할 설정과 프로필을 적용하고 결과를 검증합니다.
